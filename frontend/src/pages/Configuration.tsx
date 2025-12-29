@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { HeaderBanner } from "@/components/dashboard/HeaderBanner";
 import { Button } from "@/components/ui/button";
@@ -16,12 +17,24 @@ import {
   Bell,
   Shield,
   Database,
-  Palette,
-  Mail,
+  Clock,
+  Plus,
+  Edit2,
+  Trash2,
   Save,
+  UserPlus,
 } from "lucide-react";
+import { AddTeacherModal } from "@/components/dashboard/AddTeacherModal";
 
 const Configuration = () => {
+  // --- Fee Settings State (Sync Logic Ready) ---
+  const [globalCompMode, setGlobalCompMode] = useState<"percentage" | "fixed">("percentage");
+  const [defaultTeacherShare, setDefaultTeacherShare] = useState("70");
+  const [defaultAcademyShare, setDefaultAcademyShare] = useState("30");
+  const [defaultFixedSalary, setDefaultFixedSalary] = useState("");
+
+  const [isTeacherModalOpen, setIsTeacherModalOpen] = useState(false);
+
   return (
     <DashboardLayout title="Configuration">
       <HeaderBanner
@@ -69,8 +82,8 @@ const Configuration = () => {
           </div>
         </div>
 
-        {/* Fee Settings */}
-        <div className="rounded-xl border border-border bg-card p-6 card-shadow">
+        {/* Fee Settings (Refined & Synced) */}
+        <div className="rounded-xl border border-border bg-card p-6 card-shadow flex flex-col">
           <div className="mb-4 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-light">
               <Database className="h-5 w-5 text-success" />
@@ -80,31 +93,81 @@ const Configuration = () => {
             </h3>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-6 flex-grow">
+            {/* Updated: Mode Selection via Select */}
             <div className="space-y-2">
-              <Label>Teacher Revenue Share (%)</Label>
-              <Input type="number" defaultValue="70" />
-            </div>
-            <div className="space-y-2">
-              <Label>Academy Revenue Share (%)</Label>
-              <Input type="number" defaultValue="30" />
-            </div>
-            <div className="space-y-2">
-              <Label>Default Late Fee (PKR)</Label>
-              <Input type="number" defaultValue="500" />
-            </div>
-            <div className="space-y-2">
-              <Label>Fee Due Day</Label>
-              <Select defaultValue="10">
-                <SelectTrigger className="bg-background">
-                  <SelectValue />
+              <Label>Default Compensation Mode</Label>
+              <Select
+                value={globalCompMode}
+                onValueChange={(value: "percentage" | "fixed") => setGlobalCompMode(value)}
+              >
+                <SelectTrigger className="bg-background w-full">
+                  <SelectValue placeholder="Select default model" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover">
-                  <SelectItem value="5">5th of Month</SelectItem>
-                  <SelectItem value="10">10th of Month</SelectItem>
-                  <SelectItem value="15">15th of Month</SelectItem>
+                  <SelectItem value="percentage">Percentage Split</SelectItem>
+                  <SelectItem value="fixed">Fixed Salary</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                This model will be applied as default when adding new teachers.
+              </p>
+            </div>
+
+            {/* Conditional Inputs: Percentage Mode */}
+            {globalCompMode === "percentage" && (
+              <div className="grid grid-cols-2 gap-4 animate-fade-in">
+                <div className="space-y-2">
+                  <Label>Teacher Share (%)</Label>
+                  <Input
+                    type="number"
+                    value={defaultTeacherShare}
+                    onChange={(e) => setDefaultTeacherShare(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Academy Share (%)</Label>
+                  <Input
+                    type="number"
+                    value={defaultAcademyShare}
+                    onChange={(e) => setDefaultAcademyShare(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Conditional Inputs: Fixed Salary Mode */}
+            {globalCompMode === "fixed" && (
+              <div className="space-y-2 animate-fade-in">
+                <Label>Default Base Salary (PKR)</Label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 50000"
+                  value={defaultFixedSalary}
+                  onChange={(e) => setDefaultFixedSalary(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* Common Fee Settings (Kept at bottom) */}
+            <div className="pt-4 border-t border-border space-y-4">
+              <div className="space-y-2">
+                <Label>Default Late Fee (PKR)</Label>
+                <Input type="number" defaultValue="500" />
+              </div>
+              <div className="space-y-2">
+                <Label>Fee Due Day</Label>
+                <Select defaultValue="10">
+                  <SelectTrigger className="bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    <SelectItem value="5">5th of Month</SelectItem>
+                    <SelectItem value="10">10th of Month</SelectItem>
+                    <SelectItem value="15">15th of Month</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </div>
@@ -160,59 +223,62 @@ const Configuration = () => {
           </div>
         </div>
 
-        {/* Academic Settings */}
+        {/* Session Management */}
         <div className="rounded-xl border border-border bg-card p-6 card-shadow">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
-              <Shield className="h-5 w-5 text-muted-foreground" />
+          <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
+                <Clock className="h-5 w-5 text-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground">
+                Session Management
+              </h3>
             </div>
-            <h3 className="text-lg font-semibold text-foreground">
-              Academic Settings
-            </h3>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={() => setIsTeacherModalOpen(true)}
+                className="header-gradient text-white hover:opacity-90"
+              >
+                <UserPlus className="mr-2 h-4 w-4" />
+                Add Teacher
+              </Button>
+              <Button size="sm" variant="outline" className="text-primary border-primary">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Session
+              </Button>
+            </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Academic Year</Label>
-              <Select defaultValue="2024-25">
-                <SelectTrigger className="bg-background">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover">
-                  <SelectItem value="2024-25">2024-25</SelectItem>
-                  <SelectItem value="2025-26">2025-26</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Default Session</Label>
-              <Select defaultValue="morning">
-                <SelectTrigger className="bg-background">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover">
-                  <SelectItem value="morning">Morning (8 AM - 2 PM)</SelectItem>
-                  <SelectItem value="evening">Evening (3 PM - 9 PM)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center justify-between">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-accent transition-colors">
               <div>
-                <p className="font-medium text-foreground">MDCAT/ETEA Classes</p>
-                <p className="text-sm text-muted-foreground">
-                  Enable test prep programs
-                </p>
+                <p className="font-medium text-foreground">Morning Session</p>
+                <p className="text-xs text-muted-foreground">08:00 AM - 02:00 PM</p>
               </div>
-              <Switch defaultChecked />
+              <div className="flex gap-2">
+                <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                  <Edit2 className="h-4 w-4" />
+                </Button>
+                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center justify-between">
+
+            <div className="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-accent transition-colors">
               <div>
-                <p className="font-medium text-foreground">Biometric Attendance</p>
-                <p className="text-sm text-muted-foreground">
-                  Enable fingerprint attendance
-                </p>
+                <p className="font-medium text-foreground">Evening Session</p>
+                <p className="text-xs text-muted-foreground">03:00 PM - 09:00 PM</p>
               </div>
-              <Switch />
+              <div className="flex gap-2">
+                <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                  <Edit2 className="h-4 w-4" />
+                </Button>
+                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -220,11 +286,21 @@ const Configuration = () => {
 
       {/* Save Button */}
       <div className="mt-6 flex justify-end">
-        <Button size="lg">
+        <Button size="lg" className="header-gradient text-white hover:opacity-90">
           <Save className="mr-2 h-4 w-4" />
           Save Configuration
         </Button>
       </div>
+
+      <AddTeacherModal
+        open={isTeacherModalOpen}
+        onOpenChange={setIsTeacherModalOpen}
+        // Sync Props (Passing state to Modal)
+        defaultMode={globalCompMode}
+        defaultTeacherShare={defaultTeacherShare}
+        defaultAcademyShare={defaultAcademyShare}
+        defaultFixedSalary={defaultFixedSalary}
+      />
     </DashboardLayout>
   );
 };
