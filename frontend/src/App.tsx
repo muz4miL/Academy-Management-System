@@ -13,6 +13,7 @@ import Classes from "./pages/Classes";
 import Configuration from "./pages/Configuration";
 import Timetable from "./pages/Timetable";
 import Sessions from "./pages/Sessions";
+import StudentCard from "./pages/StudentCard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
           <Route path="/timetable" element={<Timetable />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/configuration" element={<Configuration />} />
+          <Route path="/student-card" element={<StudentCard />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
