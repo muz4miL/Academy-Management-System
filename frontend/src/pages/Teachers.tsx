@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { HeaderBanner } from "@/components/dashboard/HeaderBanner";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -10,69 +12,146 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Eye, Edit, Mail, Phone, Trash2, UserPlus } from "lucide-react";
+import { UserPlus, Loader2, Trash2 } from "lucide-react";
+// Import the Modals and API
+import { AddTeacherModal } from "@/components/dashboard/AddTeacherModal";
+import { ViewEditTeacherModal } from "@/components/dashboard/ViewEditTeacherModal";
+import { DeleteTeacherDialog } from "@/components/dashboard/DeleteTeacherDialog";
+import { teacherApi } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
-const teachersData = [
-  {
-    id: "TCH-001",
-    name: "Dr. Muhammad Aslam",
-    subject: "Biology",
-    phone: "0321-1111111",
-    email: "aslam@academy.com",
-    students: 45,
-    monthlyEarnings: 126000,
-    status: "active" as const,
-  },
-  {
-    id: "TCH-002",
-    name: "Prof. Fatima Hassan",
-    subject: "Chemistry",
-    phone: "0333-2222222",
-    email: "fatima@academy.com",
-    students: 68,
-    monthlyEarnings: 156000,
-    status: "active" as const,
-  },
-  {
-    id: "TCH-003",
-    name: "Mr. Ahmed Khan",
-    subject: "Physics",
-    phone: "0345-3333333",
-    email: "ahmed@academy.com",
-    students: 52,
-    monthlyEarnings: 118000,
-    status: "active" as const,
-  },
-  {
-    id: "TCH-004",
-    name: "Mrs. Sara Malik",
-    subject: "Mathematics",
-    phone: "0312-4444444",
-    email: "sara@academy.com",
-    students: 38,
-    monthlyEarnings: 98000,
-    status: "active" as const,
-  },
-  {
-    id: "TCH-005",
-    name: "Mr. Usman Ali",
-    subject: "English",
-    phone: "0300-5555555",
-    email: "usman@academy.com",
-    students: 72,
-    monthlyEarnings: 84000,
-    status: "active" as const,
-  },
-];
+// Helper function to format numbers with k suffix
+const formatCurrency = (amount: number) => {
+  if (amount >= 1000) {
+    return `${(amount / 1000).toFixed(0)}k`;
+  }
+  return amount.toLocaleString();
+};
+
+// Helper function to format compensation display with premium styling
+const formatCompensation = (compensation: any) => {
+  // Default to percentage 70/30 if no compensation data exists (old records)
+  if (!compensation || !compensation.type) {
+    return "70 : 30 %";
+  }
+
+  const { type, teacherShare, academyShare, fixedSalary, baseSalary, profitShare } = compensation;
+
+  if (type === "percentage") {
+    if (teacherShare && academyShare) {
+      // Elegant format: "70 : 30 %" with muted academy share
+      return `${teacherShare} : ${academyShare} %`;
+    }
+    // Default for percentage mode
+    return "70 : 30 %";
+  } else if (type === "fixed") {
+    if (fixedSalary) {
+      return `PKR ${formatCurrency(fixedSalary)}`;
+    }
+    return "Fixed Salary";
+  } else if (type === "hybrid") {
+    if (baseSalary && profitShare) {
+      return `PKR ${formatCurrency(baseSalary)} + ${profitShare}%`;
+    }
+    return "Hybrid Package";
+  }
+
+  return "Not Set";
+};
+
+// Helper to capitalize subject names
+const capitalizeSubject = (subject: string) => {
+  const subjectMap: Record<string, string> = {
+    biology: "Biology",
+    chemistry: "Chemistry",
+    physics: "Physics",
+    math: "Mathematics",
+    english: "English",
+  };
+  return subjectMap[subject] || subject;
+};
 
 const Teachers = () => {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Modal States
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isViewEditModalOpen, setIsViewEditModalOpen] = useState(false);
+  const [viewEditMode, setViewEditMode] = useState<"view" | "edit">("view");
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
+
+  // Fetch teachers from MongoDB using React Query
+  const { data: teachersResponse, isLoading } = useQuery({
+    queryKey: ['teachers'],
+    queryFn: teacherApi.getAll,
+  });
+
+  const teachers = teachersResponse?.data || [];
+  const teacherCount = teachersResponse?.count || 0;
+
+  // Delete mutation
+  const deleteTeacherMutation = useMutation({
+    mutationFn: teacherApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teachers'] });
+      toast({
+        title: "✅ Teacher Deleted",
+        description: "Teacher record has been removed successfully.",
+        className: "bg-green-50 border-green-200",
+      });
+      setIsDeleteDialogOpen(false);
+      setSelectedTeacher(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "❌ Delete Failed",
+        description: error.message || "Could not delete teacher.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleView = (teacher: any) => {
+    setSelectedTeacher(teacher);
+    setViewEditMode("view");
+    setIsViewEditModalOpen(true);
+  };
+
+  const handleEdit = (teacher: any) => {
+    setSelectedTeacher(teacher);
+    setViewEditMode("edit");
+    setIsViewEditModalOpen(true);
+  };
+
+  const handleDelete = (teacher: any) => {
+    setSelectedTeacher(teacher);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (selectedTeacher?._id) {
+      deleteTeacherMutation.mutate(selectedTeacher._id);
+    }
+  };
+
   return (
     <DashboardLayout title="Teachers">
       <HeaderBanner
         title="Teacher Management"
-        subtitle={`Total Teachers: ${teachersData.length} | All Active`}
+        subtitle={
+          isLoading
+            ? "Loading teachers..."
+            : `Total Teachers: ${teacherCount} | ${teacherCount > 0 ? 'All Active' : 'No Teachers Yet'}`
+        }
       >
-        <Button className="bg-primary-foreground text-primary hover:bg-primary-foreground/90">
+        {/* Updated Button to match Hub Design */}
+        <Button
+          onClick={() => setIsAddModalOpen(true)}
+          className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+          style={{ borderRadius: '0.75rem' }}
+        >
           <UserPlus className="mr-2 h-4 w-4" />
           Add Teacher
         </Button>
@@ -80,113 +159,234 @@ const Teachers = () => {
 
       {/* Teacher Stats */}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {["Biology", "Chemistry", "Physics", "Mathematics"].map((subject) => {
-          const teacher = teachersData.find((t) => t.subject === subject);
-          return (
+        {isLoading ? (
+          // Loading skeleton
+          Array.from({ length: 4 }).map((_, index) => (
             <div
-              key={subject}
-              className="rounded-xl border border-border bg-card p-4 card-shadow"
+              key={index}
+              className="rounded-xl border border-border bg-card p-4 card-shadow animate-pulse"
             >
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{subject}</p>
-                  <p className="text-lg font-semibold text-foreground">
-                    {teacher?.name.split(" ").slice(-1)}
-                  </p>
+                <div className="flex-1">
+                  <div className="h-4 bg-muted rounded w-20 mb-2"></div>
+                  <div className="h-5 bg-muted rounded w-24"></div>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-light">
-                  <span className="text-lg font-bold text-primary">
-                    {teacher?.students}
-                  </span>
-                </div>
+                <div className="h-10 w-10 bg-muted rounded-lg"></div>
               </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Earnings:{" "}
-                <span className="font-medium text-success">
-                  PKR {teacher?.monthlyEarnings.toLocaleString()}
-                </span>
-              </p>
+              <div className="mt-2 h-4 bg-muted rounded w-32"></div>
             </div>
-          );
-        })}
+          ))
+        ) : (
+          ["Biology", "Chemistry", "Physics", "Mathematics"].map((subject) => {
+            const subjectKey = subject.toLowerCase() === "mathematics" ? "math" : subject.toLowerCase();
+            const teacher = teachers.find((t: any) => t.subject === subjectKey);
+            return (
+              <div
+                key={subject}
+                className="rounded-xl border border-border bg-card p-4 card-shadow"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{subject}</p>
+                    <p className="text-lg font-semibold text-foreground">
+                      {teacher ? teacher.name.split(" ").slice(-1) : "—"}
+                    </p>
+                  </div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-light">
+                    <span className="text-lg font-bold text-primary">
+                      {teacher ? "✓" : "—"}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {teacher ? (
+                    <>
+                      Compensation:{" "}
+                      <span className="font-medium text-success">
+                        {teacher.compensation?.type === "percentage" && teacher.compensation?.teacherShare && teacher.compensation?.academyShare ? (
+                          <span>
+                            {teacher.compensation.teacherShare} : <span className="text-muted-foreground">{teacher.compensation.academyShare}</span> %
+                          </span>
+                        ) : (
+                          formatCompensation(teacher.compensation)
+                        )}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">No teacher assigned</span>
+                  )}
+                </p>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* Teachers Table */}
       <div className="mt-6 rounded-xl border border-border bg-card card-shadow overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-secondary hover:bg-secondary">
-              <TableHead className="font-semibold">ID</TableHead>
-              <TableHead className="font-semibold">Teacher</TableHead>
-              <TableHead className="font-semibold">Subject</TableHead>
-              <TableHead className="font-semibold">Contact</TableHead>
-              <TableHead className="font-semibold text-center">Students</TableHead>
-              <TableHead className="font-semibold text-right">Monthly (70%)</TableHead>
-              <TableHead className="font-semibold">Status</TableHead>
-              <TableHead className="font-semibold text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {teachersData.map((teacher) => (
-              <TableRow key={teacher.id} className="hover:bg-secondary/50">
-                <TableCell className="font-medium text-muted-foreground">
-                  {teacher.id}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success text-success-foreground font-medium">
-                      {teacher.name.charAt(0)}
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">{teacher.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {teacher.email}
-                      </p>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <span className="rounded-full bg-primary-light px-3 py-1 text-sm font-medium text-primary">
-                    {teacher.subject}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Phone className="h-3 w-3" />
-                    {teacher.phone}
-                  </div>
-                </TableCell>
-                <TableCell className="text-center">
-                  <span className="font-medium text-foreground">
-                    {teacher.students}
-                  </span>
-                </TableCell>
-                <TableCell className="text-right">
-                  <span className="font-medium text-success">
-                    PKR {teacher.monthlyEarnings.toLocaleString()}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={teacher.status} />
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <Edit className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <Mail className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </div>
-                </TableCell>
+        {isLoading ? (
+          // Loading State
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="ml-3 text-muted-foreground">Loading teachers...</span>
+          </div>
+        ) : teachers.length === 0 ? (
+          // Empty State
+          <div className="flex flex-col items-center justify-center py-16 px-4">
+            <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-primary-light">
+              <UserPlus className="h-10 w-10 text-primary" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground mb-2">
+              No Teachers Found
+            </h3>
+            <p className="text-muted-foreground mb-6 text-center max-w-md">
+              Get started by adding your first teacher to the system. They will appear here once registered.
+            </p>
+            <Button
+              onClick={() => setIsAddModalOpen(true)}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+              style={{ borderRadius: '0.75rem' }}
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add Your First Teacher
+            </Button>
+          </div>
+        ) : (
+          // Table with Data
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-secondary hover:bg-secondary">
+                <TableHead className="font-semibold">Teacher</TableHead>
+                <TableHead className="font-semibold">Subject</TableHead>
+                <TableHead className="font-semibold">Contact</TableHead>
+                <TableHead className="font-semibold">Joining Date</TableHead>
+                <TableHead className="font-semibold">Compensation</TableHead>
+                <TableHead className="font-semibold">Status</TableHead>
+                <TableHead className="font-semibold text-right">Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {teachers.map((teacher: any) => (
+                <TableRow key={teacher._id} className="hover:bg-secondary/50">
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success text-success-foreground font-medium">
+                        {teacher.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">{teacher.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {teacher.phone}
+                        </p>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="rounded-full bg-primary-light px-3 py-1 text-sm font-medium text-primary">
+                      {capitalizeSubject(teacher.subject)}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                      {teacher.phone}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm text-muted-foreground">
+                      {new Date(teacher.joiningDate).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-0.5">
+                      <div className="font-medium text-success text-sm">
+                        {teacher.compensation?.type === "percentage" && teacher.compensation?.teacherShare && teacher.compensation?.academyShare ? (
+                          <span>
+                            {teacher.compensation.teacherShare} : <span className="text-muted-foreground">{teacher.compensation.academyShare}</span> %
+                          </span>
+                        ) : (
+                          formatCompensation(teacher.compensation)
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground capitalize">
+                        {teacher.compensation?.type || 'Not Set'}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={teacher.status} />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center justify-end gap-1">
+                      {/* View Button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 hover:bg-primary/10 hover:text-primary"
+                        onClick={() => handleView(teacher)}
+                        title="View Details"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                      </Button>
+
+                      {/* Edit Button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 hover:bg-primary/10 hover:text-primary"
+                        onClick={() => handleEdit(teacher)}
+                        title="Edit Teacher"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                      </Button>
+
+                      {/* Delete Button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => handleDelete(teacher)}
+                        title="Delete Teacher"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </div>
+
+      {/* Modals */}
+      <AddTeacherModal
+        open={isAddModalOpen}
+        onOpenChange={setIsAddModalOpen}
+        defaultMode="percentage"
+        defaultTeacherShare="70"
+        defaultAcademyShare="30"
+        defaultFixedSalary=""
+      />
+
+      <ViewEditTeacherModal
+        open={isViewEditModalOpen}
+        onOpenChange={setIsViewEditModalOpen}
+        teacher={selectedTeacher}
+        mode={viewEditMode}
+      />
+
+      <DeleteTeacherDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        onConfirm={confirmDelete}
+        teacherName={selectedTeacher?.name || ""}
+        isDeleting={deleteTeacherMutation.isPending}
+      />
     </DashboardLayout>
   );
 };

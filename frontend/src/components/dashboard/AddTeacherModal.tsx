@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     Dialog,
     DialogContent,
@@ -21,7 +22,10 @@ import {
     RadioGroup,
     RadioGroupItem,
 } from "@/components/ui/radio-group";
-import { User, DollarSign, Calendar } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { User, DollarSign, Loader2 } from "lucide-react";
+import { teacherApi } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 interface AddTeacherModalProps {
     open: boolean;
@@ -43,16 +47,64 @@ export const AddTeacherModal = ({
     defaultAcademyShare = "30",
     defaultFixedSalary = "",
 }: AddTeacherModalProps) => {
+    const { toast } = useToast();
+    const queryClient = useQueryClient();
 
-    // Local State to handle inputs independent of global props until saved
+    // Form State - Personal Details
+    const [name, setName] = useState("");
+    const [phone, setPhone] = useState("");
+    const [subject, setSubject] = useState("");
+    const [joiningDate, setJoiningDate] = useState("");
+    const [status, setStatus] = useState<"active" | "inactive">("active"); // Status defaults to active
+
+    // Form State - Compensation
     const [compType, setCompType] = useState<CompensationType>(defaultMode);
-
     const [teacherShare, setTeacherShare] = useState(defaultTeacherShare);
     const [academyShare, setAcademyShare] = useState(defaultAcademyShare);
     const [fixedSalary, setFixedSalary] = useState(defaultFixedSalary);
-
     const [baseSalary, setBaseSalary] = useState("");
     const [bonusPercent, setBonusPercent] = useState("");
+
+    // React Query Mutation for Creating Teacher
+    const createTeacherMutation = useMutation({
+        mutationFn: teacherApi.create,
+        onSuccess: (data) => {
+            // Invalidate and refetch teachers list
+            queryClient.invalidateQueries({ queryKey: ['teachers'] });
+
+            toast({
+                title: "✅ Teacher Added Successfully",
+                description: `${data.data.name} has been added to the system.`,
+                className: "bg-green-50 border-green-200",
+            });
+
+            // Reset form and close modal
+            resetForm();
+            onOpenChange(false);
+        },
+        onError: (error: any) => {
+            toast({
+                title: "❌ Failed to Add Teacher",
+                description: error.message || "An error occurred. Please try again.",
+                variant: "destructive",
+            });
+        },
+    });
+
+    // Reset form to defaults
+    const resetForm = () => {
+        setName("");
+        setPhone("");
+        setSubject("");
+        setJoiningDate("");
+        setStatus("active"); // Reset to active
+        setCompType(defaultMode);
+        setTeacherShare(defaultTeacherShare);
+        setAcademyShare(defaultAcademyShare);
+        setFixedSalary(defaultFixedSalary);
+        setBaseSalary("");
+        setBonusPercent("");
+    };
 
     // Sync Logic: Reset local state to global defaults when the modal opens
     useEffect(() => {
@@ -65,7 +117,104 @@ export const AddTeacherModal = ({
             setBaseSalary("");
             setBonusPercent("");
         }
-    }, [open, defaultMode, defaultTeacherShare, defaultAcademyShare, defaultFixedSalary]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]); // Only reset when modal opens, not when defaults change
+
+    // Handler for the Submit Button
+    const handleSubmit = () => {
+        // Validation
+        if (!name || !phone || !subject) {
+            toast({
+                title: "⚠️ Missing Information",
+                description: "Please fill in all required fields.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        // Helper to convert empty string or invalid number to null
+        const toNumberOrNull = (value: string) => {
+            if (!value || value.trim() === '') return null;
+            const num = Number(value);
+            return isNaN(num) ? null : num;
+        };
+
+        // Build compensation object based on type with explicit null values
+        let compensation: any = { type: compType };
+
+        if (compType === "percentage") {
+            const tShare = toNumberOrNull(teacherShare);
+            const aShare = toNumberOrNull(academyShare);
+
+            if (tShare === null || aShare === null) {
+                toast({
+                    title: "⚠️ Invalid Percentages",
+                    description: "Please provide valid teacher and academy shares.",
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            compensation.teacherShare = tShare;
+            compensation.academyShare = aShare;
+            // Explicitly set unused fields to null
+            compensation.fixedSalary = null;
+            compensation.baseSalary = null;
+            compensation.profitShare = null;
+        } else if (compType === "fixed") {
+            const salary = toNumberOrNull(fixedSalary);
+
+            if (salary === null) {
+                toast({
+                    title: "⚠️ Invalid Salary",
+                    description: "Please provide a valid fixed salary amount.",
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            compensation.fixedSalary = salary;
+            // Explicitly set unused fields to null
+            compensation.teacherShare = null;
+            compensation.academyShare = null;
+            compensation.baseSalary = null;
+            compensation.profitShare = null;
+        } else if (compType === "hybrid") {
+            const base = toNumberOrNull(baseSalary);
+            const profit = toNumberOrNull(bonusPercent);
+
+            if (base === null || profit === null) {
+                toast({
+                    title: "⚠️ Missing Hybrid Details",
+                    description: "Please provide both base salary and profit share percentage.",
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            compensation.baseSalary = base;
+            compensation.profitShare = profit;
+            // Explicitly set unused fields to null
+            compensation.teacherShare = null;
+            compensation.academyShare = null;
+            compensation.fixedSalary = null;
+        }
+
+        console.log('🔍 FRONTEND - Sending teacher data:', JSON.stringify({ name, phone, subject, compensation }, null, 2));
+
+        // Build teacher data object
+        const teacherData = {
+            name,
+            phone,
+            subject,
+            joiningDate: joiningDate || new Date().toISOString(),
+            status, //Include status (active/inactive)
+            compensation,
+        };
+
+        // Trigger mutation
+        createTeacherMutation.mutate(teacherData);
+    };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -86,16 +235,28 @@ export const AddTeacherModal = ({
                     {/* Personal Details Section */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label htmlFor="name">Full Name</Label>
-                            <Input id="name" placeholder="e.g. Dr. Sarah Ali" className="bg-background" />
+                            <Label htmlFor="name">Full Name *</Label>
+                            <Input
+                                id="name"
+                                placeholder="e.g. Dr. Sarah Ali"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                className="bg-background"
+                            />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="phone">Phone Number</Label>
-                            <Input id="phone" placeholder="+92 300 1234567" className="bg-background" />
+                            <Label htmlFor="phone">Phone Number *</Label>
+                            <Input
+                                id="phone"
+                                placeholder="+92 300 1234567"
+                                value={phone}
+                                onChange={(e) => setPhone(e.target.value)}
+                                className="bg-background"
+                            />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="subject">Subject Specialization</Label>
-                            <Select>
+                            <Label htmlFor="subject">Subject Specialization *</Label>
+                            <Select value={subject} onValueChange={setSubject}>
                                 <SelectTrigger className="bg-background">
                                     <SelectValue placeholder="Select Subject" />
                                 </SelectTrigger>
@@ -110,7 +271,39 @@ export const AddTeacherModal = ({
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="date">Joining Date</Label>
-                            <Input id="date" type="date" className="bg-background" />
+                            <Input
+                                id="date"
+                                type="date"
+                                value={joiningDate}
+                                onChange={(e) => setJoiningDate(e.target.value)}
+                                className="bg-background"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Status Toggle */}
+                    <div className="flex items-center justify-between p-4 bg-secondary/20 rounded-lg border border-border">
+                        <div className="space-y-0.5">
+                            <Label htmlFor="status" className="text-base font-medium">
+                                Teacher Status
+                            </Label>
+                            <p className="text-sm text-muted-foreground">
+                                {status === "active" ? "Currently Active" : "Currently Inactive"}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <span className={`text-sm font-medium ${status === "inactive" ? "text-muted-foreground" : "text-gray-400"}`}>
+                                Inactive
+                            </span>
+                            <Switch
+                                id="status"
+                                checked={status === "active"}
+                                onCheckedChange={(checked) => setStatus(checked ? "active" : "inactive")}
+                                className="data-[state=checked]:bg-green-500"
+                            />
+                            <span className={`text-sm font-medium ${status === "active" ? "text-green-600" : "text-muted-foreground"}`}>
+                                Active
+                            </span>
                         </div>
                     </div>
 
@@ -221,14 +414,31 @@ export const AddTeacherModal = ({
                 </div>
 
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    <Button
+                        variant="outline"
+                        onClick={() => onOpenChange(false)}
+                        disabled={createTeacherMutation.isPending}
+                    >
                         Cancel
                     </Button>
-                    <Button className="header-gradient text-white hover:opacity-90">
-                        Add Teacher
+                    <Button
+                        onClick={handleSubmit}
+                        disabled={createTeacherMutation.isPending}
+                        className="header-gradient text-white hover:opacity-90"
+                    >
+                        {createTeacherMutation.isPending ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Adding...
+                            </>
+                        ) : (
+                            'Add Teacher'
+                        )}
                     </Button>
                 </DialogFooter>
             </DialogContent>
-        </Dialog>
+        </Dialog >
     );
 };
+
+export default AddTeacherModal;
