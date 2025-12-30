@@ -24,6 +24,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { studentApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+// Import CRUD Modals
+import { ViewEditStudentModal } from "@/components/dashboard/ViewEditStudentModal";
+import { DeleteStudentDialog } from "@/components/dashboard/DeleteStudentDialog";
 
 // Helper function to get initials from name
 const getInitials = (name: string): string => {
@@ -38,9 +41,16 @@ const Students = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // Filter states
   const [searchTerm, setSearchTerm] = useState("");
   const [classFilter, setClassFilter] = useState("all");
   const [groupFilter, setGroupFilter] = useState("all");
+
+  // Modal states - Mirroring Teachers pattern
+  const [isViewEditModalOpen, setIsViewEditModalOpen] = useState(false);
+  const [viewEditMode, setViewEditMode] = useState<"view" | "edit">("view");
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
 
   // Fetch students with React Query
   const { data, isLoading, isError, error } = useQuery({
@@ -64,6 +74,8 @@ const Students = () => {
         description: "Student record has been removed successfully",
         duration: 3000,
       });
+      setIsDeleteDialogOpen(false);
+      setSelectedStudent(null);
     },
     onError: (error: any) => {
       toast.error("Delete Failed", {
@@ -73,9 +85,27 @@ const Students = () => {
     },
   });
 
-  const handleDelete = (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to delete ${name}?`)) {
-      deleteStudentMutation.mutate(id);
+  // Handlers - Mirroring Teachers pattern
+  const handleView = (student: any) => {
+    setSelectedStudent(student);
+    setViewEditMode("view");
+    setIsViewEditModalOpen(true);
+  };
+
+  const handleEdit = (student: any) => {
+    setSelectedStudent(student);
+    setViewEditMode("edit");
+    setIsViewEditModalOpen(true);
+  };
+
+  const handleDelete = (student: any) => {
+    setSelectedStudent(student);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (selectedStudent?._id) {
+      deleteStudentMutation.mutate(selectedStudent._id);
     }
   };
 
@@ -280,6 +310,8 @@ const Students = () => {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 hover:bg-sky-50 hover:text-sky-600"
+                          onClick={() => handleView(student)}
+                          title="View Details"
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -287,6 +319,8 @@ const Students = () => {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 hover:bg-blue-50 hover:text-blue-600"
+                          onClick={() => handleEdit(student)}
+                          title="Edit Student"
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -294,8 +328,9 @@ const Students = () => {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 hover:bg-red-50 hover:text-red-600"
-                          onClick={() => handleDelete(student._id, student.studentName)}
+                          onClick={() => handleDelete(student)}
                           disabled={deleteStudentMutation.isPending}
+                          title="Delete Student"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -308,6 +343,23 @@ const Students = () => {
           </Table>
         )}
       </div>
+
+      {/* CRUD Modals - Mirroring Teachers Pattern */}
+      <ViewEditStudentModal
+        open={isViewEditModalOpen}
+        onOpenChange={setIsViewEditModalOpen}
+        student={selectedStudent}
+        mode={viewEditMode}
+      />
+
+      <DeleteStudentDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        onConfirm={confirmDelete}
+        studentName={selectedStudent?.studentName || ""}
+        studentId={selectedStudent?.studentId || ""}
+        isDeleting={deleteStudentMutation.isPending}
+      />
     </DashboardLayout>
   );
 };

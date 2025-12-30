@@ -147,20 +147,45 @@ router.post('/', async (req, res) => {
 // @route   PUT /api/students/:id
 // @desc    Update a student
 // @access  Public
+// 🔧 FIX: Use find + save pattern to trigger pre-save hook for feeStatus calculation
 router.put('/:id', async (req, res) => {
     try {
-        const updatedStudent = await Student.findByIdAndUpdate(
-            req.params.id,
-            req.body,
-            { new: true, runValidators: true }
-        );
+        // Step 1: Find the student
+        const student = await Student.findById(req.params.id);
 
-        if (!updatedStudent) {
+        if (!student) {
             return res.status(404).json({
                 success: false,
                 message: 'Student not found',
             });
         }
+
+        // Step 2: Sanitize incoming data
+        const updateData = { ...req.body };
+
+        // Ensure fees are Numbers
+        if (updateData.totalFee !== undefined) {
+            updateData.totalFee = Number(updateData.totalFee);
+        }
+        if (updateData.paidAmount !== undefined) {
+            updateData.paidAmount = Number(updateData.paidAmount);
+        }
+
+        // Never allow frontend to override studentId
+        delete updateData.studentId;
+        delete updateData._id;
+
+        console.log('📝 Updating student:', student.studentId);
+        console.log('📝 Update data:', JSON.stringify(updateData, null, 2));
+
+        // Step 3: Apply updates using Object.assign
+        Object.assign(student, updateData);
+
+        // Step 4: Save (this triggers the pre-save hook!)
+        const updatedStudent = await student.save();
+
+        console.log('✅ Student updated:', updatedStudent.studentId);
+        console.log('✅ New feeStatus:', updatedStudent.feeStatus);
 
         res.json({
             success: true,
@@ -168,6 +193,7 @@ router.put('/:id', async (req, res) => {
             data: updatedStudent,
         });
     } catch (error) {
+        console.error('❌ Error updating student:', error.message);
         res.status(400).json({
             success: false,
             message: 'Error updating student',
