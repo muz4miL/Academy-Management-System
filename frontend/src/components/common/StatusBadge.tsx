@@ -12,8 +12,8 @@ const statusStyles: Record<StatusBadgeProps["status"], { bg: string; text: strin
     label: "Paid",
   },
   pending: {
-    bg: "bg-pending-light",
-    text: "text-pending",
+    bg: "bg-amber-50",
+    text: "text-amber-600",
     label: "Pending",
   },
   partial: {

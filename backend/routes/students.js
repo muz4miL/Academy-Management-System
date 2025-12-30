@@ -25,7 +25,7 @@ router.get('/', async (req, res) => {
         }
 
         if (search) {
-            query.name = { $regex: search, $options: 'i' }; // Case-insensitive search
+            query.studentName = { $regex: search, $options: 'i' }; // Case-insensitive search
         }
 
         const students = await Student.find(query).sort({ createdAt: -1 });
@@ -76,8 +76,56 @@ router.get('/:id', async (req, res) => {
 // @access  Public
 router.post('/', async (req, res) => {
     try {
-        const newStudent = new Student(req.body);
+        console.log('\n📥 FULL REQUEST BODY:', JSON.stringify(req.body, null, 2));
+
+        // ✨ ELASTIC DATA SANITIZATION
+        const sanitizedData = { ...req.body };
+
+        // Fix subjects: Convert string to array if needed
+        if (typeof sanitizedData.subjects === 'string') {
+            sanitizedData.subjects = sanitizedData.subjects
+                .split(',')
+                .map(s => s.trim())
+                .filter(s => s.length > 0);
+            console.log('🔧 Converted subjects string to array:', sanitizedData.subjects);
+        }
+
+        // Ensure subjects is an array
+        if (!Array.isArray(sanitizedData.subjects)) {
+            sanitizedData.subjects = [];
+        }
+
+        // Default admissionDate if missing
+        if (!sanitizedData.admissionDate) {
+            sanitizedData.admissionDate = new Date();
+            console.log('🔧 Set default admissionDate:', sanitizedData.admissionDate);
+        }
+
+        // Ensure fees are Numbers
+        if (sanitizedData.totalFee !== undefined) {
+            sanitizedData.totalFee = Number(sanitizedData.totalFee);
+            console.log('🔧 Cast totalFee to Number:', sanitizedData.totalFee);
+        }
+        if (sanitizedData.paidAmount !== undefined) {
+            sanitizedData.paidAmount = Number(sanitizedData.paidAmount);
+            console.log('🔧 Cast paidAmount to Number:', sanitizedData.paidAmount);
+        }
+
+        // ✨ TASK 3: CONTROLLER SAFETY - Never let frontend send studentId
+        // Delete it from the request to let the pre-save hook handle it
+        if (sanitizedData.studentId !== undefined) {
+            delete sanitizedData.studentId;
+            console.log('🔧 Removed studentId from request (will be auto-generated)');
+        }
+
+        console.log('\n✅ Sanitized Data:', JSON.stringify(sanitizedData, null, 2));
+
+        const newStudent = new Student(sanitizedData);
+        console.log('✅ Student instance created, attempting to save...');
+
         const savedStudent = await newStudent.save();
+        console.log('✅ Student saved successfully with ID:', savedStudent.studentId);
+        console.log('✅ Fee Status:', savedStudent.feeStatus);
 
         res.status(201).json({
             success: true,
@@ -85,6 +133,9 @@ router.post('/', async (req, res) => {
             data: savedStudent,
         });
     } catch (error) {
+        console.error('❌ Error creating student:', error.message);
+        console.error('❌ Full error:', error);
+
         res.status(400).json({
             success: false,
             message: 'Error creating student',

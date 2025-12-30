@@ -30,7 +30,7 @@ const formatCurrency = (amount: number) => {
 
 // Helper function to format compensation display with premium styling
 const formatCompensation = (compensation: any) => {
-  // Default to percentage 70/30 if no compensation data exists (old records)
+  // Only use default if compensation object doesn't exist at all
   if (!compensation || !compensation.type) {
     return "70 : 30 %";
   }
@@ -38,11 +38,13 @@ const formatCompensation = (compensation: any) => {
   const { type, teacherShare, academyShare, fixedSalary, baseSalary, profitShare } = compensation;
 
   if (type === "percentage") {
-    if (teacherShare && academyShare) {
-      // Elegant format: "70 : 30 %" with muted academy share
+    // Check for null/undefined, NOT falsy (0 is valid!)
+    if (teacherShare !== null && teacherShare !== undefined &&
+      academyShare !== null && academyShare !== undefined) {
+      // Display ACTUAL values, even if 0
       return `${teacherShare} : ${academyShare} %`;
     }
-    // Default for percentage mode
+    // Only fall back if values are truly missing
     return "70 : 30 %";
   } else if (type === "fixed") {
     if (fixedSalary) {
@@ -59,7 +61,7 @@ const formatCompensation = (compensation: any) => {
   return "Not Set";
 };
 
-// Helper to capitalize subject names
+// Helper function to capitalize subject names
 const capitalizeSubject = (subject: string) => {
   const subjectMap: Record<string, string> = {
     biology: "Biology",
@@ -68,7 +70,7 @@ const capitalizeSubject = (subject: string) => {
     math: "Mathematics",
     english: "English",
   };
-  return subjectMap[subject] || subject;
+  return subjectMap[subject] || subject.charAt(0).toUpperCase() + subject.slice(1);
 };
 
 const Teachers = () => {
@@ -157,15 +159,11 @@ const Teachers = () => {
         </Button>
       </HeaderBanner>
 
-      {/* Teacher Stats */}
+      {/* Teacher Stats - Premium Grid with Dynamic Subjects */}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {isLoading ? (
-          // Loading skeleton
-          Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="rounded-xl border border-border bg-card p-4 card-shadow animate-pulse"
-            >
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card p-4 card-shadow animate-pulse">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <div className="h-4 bg-muted rounded w-20 mb-2"></div>
@@ -177,48 +175,73 @@ const Teachers = () => {
             </div>
           ))
         ) : (
-          ["Biology", "Chemistry", "Physics", "Mathematics"].map((subject) => {
-            const subjectKey = subject.toLowerCase() === "mathematics" ? "math" : subject.toLowerCase();
-            const teacher = teachers.find((t: any) => t.subject === subjectKey);
-            return (
-              <div
-                key={subject}
-                className="rounded-xl border border-border bg-card p-4 card-shadow"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{subject}</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {teacher ? teacher.name.split(" ").slice(-1) : "—"}
-                    </p>
-                  </div>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-light">
-                    <span className="text-lg font-bold text-primary">
-                      {teacher ? "✓" : "—"}
-                    </span>
-                  </div>
-                </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {teacher ? (
-                    <>
-                      Compensation:{" "}
-                      <span className="font-medium text-success">
-                        {teacher.compensation?.type === "percentage" && teacher.compensation?.teacherShare && teacher.compensation?.academyShare ? (
-                          <span>
-                            {teacher.compensation.teacherShare} : <span className="text-muted-foreground">{teacher.compensation.academyShare}</span> %
-                          </span>
-                        ) : (
-                          formatCompensation(teacher.compensation)
-                        )}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">No teacher assigned</span>
-                  )}
-                </p>
-              </div>
+          (() => {
+            // Extract unique subjects from teachers (only show subjects with teachers)
+            const uniqueSubjects = Array.from(
+              new Set(teachers.map((t: any) => t.subject).filter(Boolean))
             );
-          })
+
+            // Capitalize subject names properly
+            const formatSubjectName = (subject: string) => {
+              const subjectMap: Record<string, string> = {
+                biology: "Biology",
+                chemistry: "Chemistry",
+                physics: "Physics",
+                math: "Mathematics",
+                english: "English",
+              };
+              return subjectMap[subject] || subject.charAt(0).toUpperCase() + subject.slice(1);
+            };
+
+            return uniqueSubjects.map((subjectKey: string) => {
+              const teacher = teachers.find((t: any) => t.subject === subjectKey);
+              const displayName = formatSubjectName(subjectKey);
+
+              return (
+                <div
+                  key={subjectKey}
+                  className="rounded-xl border border-border bg-card p-4 card-shadow"
+                  style={{ borderRadius: '0.75rem' }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">{displayName}</p>
+                      <p className="text-lg font-semibold text-foreground">
+                        {teacher ? teacher.name.split(" ").slice(-1) : "—"}
+                      </p>
+                    </div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-light">
+                      <span className="text-lg font-bold text-primary">
+                        {teacher ? "✓" : "—"}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {teacher ? (
+                      <>
+                        Compensation:{" "}
+                        <span className="font-medium text-success">
+                          {teacher.compensation?.type === "percentage" &&
+                            teacher.compensation?.teacherShare !== null &&
+                            teacher.compensation?.teacherShare !== undefined &&
+                            teacher.compensation?.academyShare !== null &&
+                            teacher.compensation?.academyShare !== undefined ? (
+                            <span>
+                              {teacher.compensation.teacherShare} : <span className="text-muted-foreground">{teacher.compensation.academyShare}</span> %
+                            </span>
+                          ) : (
+                            formatCompensation(teacher.compensation)
+                          )}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">No teacher assigned</span>
+                    )}
+                  </p>
+                </div>
+              );
+            });
+          })()
         )}
       </div>
 
@@ -304,7 +327,11 @@ const Teachers = () => {
                   <TableCell>
                     <div className="flex flex-col gap-0.5">
                       <div className="font-medium text-success text-sm">
-                        {teacher.compensation?.type === "percentage" && teacher.compensation?.teacherShare && teacher.compensation?.academyShare ? (
+                        {teacher.compensation?.type === "percentage" &&
+                          teacher.compensation?.teacherShare !== null &&
+                          teacher.compensation?.teacherShare !== undefined &&
+                          teacher.compensation?.academyShare !== null &&
+                          teacher.compensation?.academyShare !== undefined ? (
                           <span>
                             {teacher.compensation.teacherShare} : <span className="text-muted-foreground">{teacher.compensation.academyShare}</span> %
                           </span>

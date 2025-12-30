@@ -96,3 +96,77 @@ export const settingsApi = {
         return data;
     },
 };
+
+// Student API Endpoints
+export const studentApi = {
+    // Get all students
+    getAll: async (filters?: { class?: string; group?: string; search?: string }) => {
+        const queryParams = new URLSearchParams();
+        if (filters?.class) queryParams.append('class', filters.class);
+        if (filters?.group) queryParams.append('group', filters.group);
+        if (filters?.search) queryParams.append('search', filters.search);
+
+        const url = `${API_BASE_URL}/students${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch students');
+        }
+        return data;
+    },
+
+    // Get single student by ID
+    getById: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/students/${id}`);
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch student');
+        }
+        return data;
+    },
+
+    // Create new student (admission)
+    create: async (studentData: any) => {
+        const response = await fetch(`${API_BASE_URL}/students`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(studentData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to create student');
+        }
+        return data;
+    },
+
+    // Update student
+    update: async (id: string, studentData: any) => {
+        const response = await fetch(`${API_BASE_URL}/students/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(studentData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to update student');
+        }
+        return data;
+    },
+
+    // Delete student
+    delete: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/students/${id}`, {
+            method: 'DELETE',
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to delete student');
+        }
+        return data;
+    },
+};
+

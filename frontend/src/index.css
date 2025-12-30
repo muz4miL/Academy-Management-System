@@ -245,4 +245,17 @@
   .animate-border-glow {
     animation: border-glow 2s ease-in-out infinite;
   }
+
+  /* Hide scrollbar for horizontal scroll carousel */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+    /* Chrome, Safari, Opera */
+  }
 }

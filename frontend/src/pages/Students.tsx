@@ -19,99 +19,76 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Eye, Edit, Trash2, UserPlus, Search, Download } from "lucide-react";
+import { Eye, Edit, Trash2, UserPlus, Search, Download, Loader2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { studentApi } from "@/lib/api";
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
-const studentsData = [
-  {
-    id: "STU-001",
-    name: "Ahmed Ali",
-    fatherName: "Mohammad Ali",
-    class: "11th",
-    group: "Pre-Medical",
-    subjects: ["Biology", "Chemistry", "Physics"],
-    phone: "0321-1234567",
-    status: "active" as const,
-    feeStatus: "paid" as const,
-    totalFee: 40000,
-    paid: 40000,
-  },
-  {
-    id: "STU-002",
-    name: "Sara Khan",
-    fatherName: "Imran Khan",
-    class: "12th",
-    group: "Pre-Engineering",
-    subjects: ["Math", "Chemistry", "Physics"],
-    phone: "0333-2345678",
-    status: "active" as const,
-    feeStatus: "partial" as const,
-    totalFee: 40000,
-    paid: 25000,
-  },
-  {
-    id: "STU-003",
-    name: "Hassan Raza",
-    fatherName: "Raza Ahmed",
-    class: "MDCAT",
-    group: "Pre-Medical",
-    subjects: ["Biology", "Chemistry", "Physics", "English"],
-    phone: "0345-3456789",
-    status: "active" as const,
-    feeStatus: "pending" as const,
-    totalFee: 60000,
-    paid: 0,
-  },
-  {
-    id: "STU-004",
-    name: "Fatima Noor",
-    fatherName: "Noor Muhammad",
-    class: "10th",
-    group: "Pre-Medical",
-    subjects: ["Biology", "Chemistry"],
-    phone: "0312-4567890",
-    status: "active" as const,
-    feeStatus: "paid" as const,
-    totalFee: 30000,
-    paid: 30000,
-  },
-  {
-    id: "STU-005",
-    name: "Usman Shah",
-    fatherName: "Shah Nawaz",
-    class: "11th",
-    group: "Pre-Engineering",
-    subjects: ["Math", "Physics"],
-    phone: "0300-5678901",
-    status: "active" as const,
-    feeStatus: "partial" as const,
-    totalFee: 35000,
-    paid: 20000,
-  },
-];
+// Helper function to get initials from name
+const getInitials = (name: string): string => {
+  const parts = name.trim().split(' ');
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.substring(0, 2).toUpperCase();
+};
 
 const Students = () => {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
   const [searchTerm, setSearchTerm] = useState("");
   const [classFilter, setClassFilter] = useState("all");
   const [groupFilter, setGroupFilter] = useState("all");
 
-  const filteredStudents = studentsData.filter((student) => {
-    const matchesSearch = student.name
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    const matchesClass =
-      classFilter === "all" || student.class === classFilter;
-    const matchesGroup =
-      groupFilter === "all" || student.group === groupFilter;
-    return matchesSearch && matchesClass && matchesGroup;
+  // Fetch students with React Query
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["students", { class: classFilter, group: groupFilter, search: searchTerm }],
+    queryFn: () =>
+      studentApi.getAll({
+        class: classFilter !== "all" ? classFilter : undefined,
+        group: groupFilter !== "all" ? groupFilter : undefined,
+        search: searchTerm || undefined,
+      }),
   });
+
+  const students = data?.data || [];
+
+  // Delete mutation
+  const deleteStudentMutation = useMutation({
+    mutationFn: studentApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      toast.success("Student Deleted", {
+        description: "Student record has been removed successfully",
+        duration: 3000,
+      });
+    },
+    onError: (error: any) => {
+      toast.error("Delete Failed", {
+        description: error.message || "Failed to delete student",
+        duration: 4000,
+      });
+    },
+  });
+
+  const handleDelete = (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete ${name}?`)) {
+      deleteStudentMutation.mutate(id);
+    }
+  };
 
   return (
     <DashboardLayout title="Students">
       <HeaderBanner
         title="Student Management"
-        subtitle={`Total Students: ${studentsData.length} | Active: ${studentsData.filter((s) => s.status === "active").length}`}
+        subtitle={`Total Students: ${students.length} | Active: ${students.filter((s: any) => s.status === "active").length}`}
       >
-        <Button className="bg-primary-foreground text-primary hover:bg-primary-foreground/90">
+        <Button
+          className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+          onClick={() => navigate("/admissions")}
+        >
           <UserPlus className="mr-2 h-4 w-4" />
           Add Student
         </Button>
@@ -164,82 +141,172 @@ const Students = () => {
 
       {/* Students Table */}
       <div className="mt-6 rounded-xl border border-border bg-card card-shadow overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-secondary hover:bg-secondary">
-              <TableHead className="font-semibold">ID</TableHead>
-              <TableHead className="font-semibold">Student</TableHead>
-              <TableHead className="font-semibold">Class</TableHead>
-              <TableHead className="font-semibold">Group</TableHead>
-              <TableHead className="font-semibold">Subjects</TableHead>
-              <TableHead className="font-semibold">Status</TableHead>
-              <TableHead className="font-semibold">Fee Status</TableHead>
-              <TableHead className="font-semibold text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredStudents.map((student) => (
-              <TableRow key={student.id} className="hover:bg-secondary/50">
-                <TableCell className="font-medium text-muted-foreground">
-                  {student.id}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground font-medium">
-                      {student.name.charAt(0)}
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">{student.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {student.fatherName}
-                      </p>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>{student.class}</TableCell>
-                <TableCell>
-                  <span className="text-sm">{student.group}</span>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {student.subjects.slice(0, 2).map((subject) => (
-                      <span
-                        key={subject}
-                        className="rounded bg-secondary px-2 py-0.5 text-xs text-muted-foreground"
-                      >
-                        {subject}
-                      </span>
-                    ))}
-                    {student.subjects.length > 2 && (
-                      <span className="rounded bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
-                        +{student.subjects.length - 2}
-                      </span>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={student.status} />
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={student.feeStatus} />
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <Edit className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </TableCell>
+        {isLoading ? (
+          <div className="flex items-center justify-center p-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="ml-3 text-muted-foreground">Loading students...</span>
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center p-12">
+            <p className="text-destructive font-semibold">
+              Error loading students
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              {(error as any)?.message || "Failed to fetch students"}
+            </p>
+          </div>
+        ) : students.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12">
+            <p className="text-muted-foreground font-semibold">
+              No students found
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Add your first student to get started
+            </p>
+            <Button
+              className="mt-4"
+              onClick={() => navigate("/admissions")}
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add First Student
+            </Button>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-secondary hover:bg-secondary">
+                <TableHead className="font-semibold">ID</TableHead>
+                <TableHead className="font-semibold">Student</TableHead>
+                <TableHead className="font-semibold">Class</TableHead>
+                <TableHead className="font-semibold">Group</TableHead>
+                <TableHead className="font-semibold">Subjects</TableHead>
+                <TableHead className="font-semibold text-center">Status</TableHead>
+                <TableHead className="font-semibold text-center">Fee Status</TableHead>
+                <TableHead className="font-semibold text-right">Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {students.map((student: any) => {
+                const initials = getInitials(student.studentName || "NA");
+
+                return (
+                  <TableRow key={student._id} className="hover:bg-secondary/50">
+                    <TableCell className="font-medium font-mono text-xs text-muted-foreground">
+                      {student.studentId}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        {/* Sky Blue Avatar with Perfect Centering */}
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white font-bold text-sm shadow-md">
+                          <span className="flex items-center justify-center">{initials}</span>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground">
+                            {student.studentName}
+                          </p>
+                          {/* Draft Data Styling - Visual Cue for Incomplete Entries */}
+                          {student.fatherName === "To be updated" ? (
+                            <p className="text-[11px] italic text-slate-400">
+                              {student.fatherName}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              {student.fatherName}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-medium">{student.class}</TableCell>
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground">{student.group}</span>
+                    </TableCell>
+                    <TableCell>
+                      {/* Enterprise Subject Pills */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {student.subjects?.length > 0 ? (
+                          <>
+                            {student.subjects.slice(0, 2).map((subject: string) => (
+                              <span
+                                key={subject}
+                                className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 border border-slate-200 text-slate-700"
+                              >
+                                {subject}
+                              </span>
+                            ))}
+                            {student.subjects.length > 2 && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 border border-sky-200 text-sky-700">
+                                +{student.subjects.length - 2}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">No subjects</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {/* Status Badge with Refined Glow */}
+                      <div
+                        className="inline-flex items-center justify-center"
+                        style={{
+                          filter: student.status === 'active'
+                            ? 'drop-shadow(0 0 8px rgba(34, 197, 94, 0.3))'
+                            : 'drop-shadow(0 0 8px rgba(148, 163, 184, 0.2))'
+                        }}
+                      >
+                        <StatusBadge status={student.status} />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {/* Fee Status Badge - Locked to Backend */}
+                      <div
+                        className="inline-flex items-center justify-center"
+                        style={{
+                          filter:
+                            student.feeStatus === 'paid'
+                              ? 'drop-shadow(0 0 8px rgba(34, 197, 94, 0.3))'
+                              : student.feeStatus === 'partial'
+                                ? 'drop-shadow(0 0 8px rgba(234, 179, 8, 0.3))'
+                                : 'drop-shadow(0 0 8px rgba(217, 119, 6, 0.3))' // Amber glow
+                        }}
+                      >
+                        <StatusBadge status={student.feeStatus} />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-sky-50 hover:text-sky-600"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-blue-50 hover:text-blue-600"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-red-50 hover:text-red-600"
+                          onClick={() => handleDelete(student._id, student.studentName)}
+                          disabled={deleteStudentMutation.isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
       </div>
     </DashboardLayout>
   );

@@ -120,6 +120,17 @@ export const AddTeacherModal = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open]); // Only reset when modal opens, not when defaults change
 
+    // Auto-calculate academyShare when teacherShare changes (for percentage mode)
+    useEffect(() => {
+        if (compType === "percentage" && teacherShare) {
+            const teacherValue = Number(teacherShare);
+            if (!isNaN(teacherValue) && teacherValue >= 0 && teacherValue <= 100) {
+                const calculatedAcademyShare = (100 - teacherValue).toString();
+                setAcademyShare(calculatedAcademyShare);
+            }
+        }
+    }, [teacherShare, compType]);
+
     // Handler for the Submit Button
     const handleSubmit = () => {
         // Validation
@@ -150,6 +161,16 @@ export const AddTeacherModal = ({
                 toast({
                     title: "⚠️ Invalid Percentages",
                     description: "Please provide valid teacher and academy shares.",
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            // Bulletproof 100% check
+            if (tShare + aShare !== 100) {
+                toast({
+                    title: "🧮 Math Error",
+                    description: "Total split must be exactly 100%. Currently: " + (tShare + aShare) + "%",
                     variant: "destructive",
                 });
                 return;
@@ -355,18 +376,32 @@ export const AddTeacherModal = ({
                                         <Label className="text-sm text-muted-foreground">Teacher Share (%)</Label>
                                         <Input
                                             type="number"
+                                            min="0"
+                                            max="100"
                                             value={teacherShare}
-                                            onChange={(e) => setTeacherShare(e.target.value)}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                // Strict clamping: force 0-100 range
+                                                if (value !== "") {
+                                                    const clamped = Math.min(100, Math.max(0, Number(value)));
+                                                    setTeacherShare(clamped.toString());
+                                                } else {
+                                                    setTeacherShare(value);
+                                                }
+                                            }}
                                             className="bg-background"
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label className="text-sm text-muted-foreground">Academy Share (%)</Label>
+                                        <Label className="text-sm text-muted-foreground flex items-center gap-1">
+                                            Academy Share (%)
+                                            <span className="text-xs text-primary">• Auto-calculated</span>
+                                        </Label>
                                         <Input
                                             type="number"
                                             value={academyShare}
-                                            onChange={(e) => setAcademyShare(e.target.value)}
-                                            className="bg-background"
+                                            disabled
+                                            className="bg-muted/50 cursor-not-allowed text-muted-foreground"
                                         />
                                     </div>
                                 </div>
