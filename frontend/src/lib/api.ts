@@ -170,3 +170,74 @@ export const studentApi = {
     },
 };
 
+// Class API Endpoints
+export const classApi = {
+    // Get all classes
+    getAll: async (filters?: { status?: string; search?: string }) => {
+        const queryParams = new URLSearchParams();
+        if (filters?.status) queryParams.append('status', filters.status);
+        if (filters?.search) queryParams.append('search', filters.search);
+
+        const url = `${API_BASE_URL}/classes${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch classes');
+        }
+        return data;
+    },
+
+    // Get single class by ID
+    getById: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/classes/${id}`);
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch class');
+        }
+        return data;
+    },
+
+    // Create new class
+    create: async (classData: any) => {
+        const response = await fetch(`${API_BASE_URL}/classes`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(classData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to create class');
+        }
+        return data;
+    },
+
+    // Update class
+    update: async (id: string, classData: any) => {
+        const response = await fetch(`${API_BASE_URL}/classes/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(classData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to update class');
+        }
+        return data;
+    },
+
+    // Delete class
+    delete: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/classes/${id}`, {
+            method: 'DELETE',
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to delete class');
+        }
+        return data;
+    },
+};

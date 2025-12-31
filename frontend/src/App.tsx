@@ -8,7 +8,6 @@ import Admissions from "./pages/Admissions";
 import Students from "./pages/Students";
 import Teachers from "./pages/Teachers";
 import Finance from "./pages/Finance";
-import Attendance from "./pages/Attendance";
 import Classes from "./pages/Classes";
 import Configuration from "./pages/Configuration";
 import Timetable from "./pages/Timetable";
@@ -30,7 +29,6 @@ const App = () => (
           <Route path="/students" element={<Students />} />
           <Route path="/teachers" element={<Teachers />} />
           <Route path="/finance" element={<Finance />} />
-          <Route path="/attendance" element={<Attendance />} />
           <Route path="/classes" element={<Classes />} />
           <Route path="/timetable" element={<Timetable />} />
           <Route path="/sessions" element={<Sessions />} />

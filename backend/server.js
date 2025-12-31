@@ -28,12 +28,14 @@ const studentRoutes = require('./routes/students');
 const teacherRoutes = require('./routes/teachers');
 const financeRoutes = require('./routes/finance');
 const configRoutes = require('./routes/config');
+const classRoutes = require('./routes/classes');
 
 // API Routes
 app.use('/api/students', studentRoutes);
 app.use('/api/teachers', teacherRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/classes', classRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -45,6 +47,7 @@ app.get('/', (req, res) => {
             teachers: '/api/teachers',
             finance: '/api/finance',
             config: '/api/config',
+            classes: '/api/classes',
         },
     });
 });
