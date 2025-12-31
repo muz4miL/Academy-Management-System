@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const Class = require('../models/Class');
+const Student = require('../models/Student');
 
 // @route   GET /api/classes
-// @desc    Get all classes
+// @desc    Get all classes with student count and revenue
 // @access  Public
 router.get('/', async (req, res) => {
     try {
@@ -23,12 +24,37 @@ router.get('/', async (req, res) => {
             ];
         }
 
-        const classes = await Class.find(query).sort({ createdAt: -1 });
+        const classes = await Class.find(query).sort({ createdAt: -1 }).lean();
+
+        // TASK 2: Virtual Count & Revenue Handshake
+        // For each class, aggregate student count and revenue
+        const classesWithStats = await Promise.all(
+            classes.map(async (cls) => {
+                // Count students with this classRef
+                const studentCount = await Student.countDocuments({ classRef: cls._id });
+
+                // Calculate total revenue (sum of paidAmount from all linked students)
+                const revenueResult = await Student.aggregate([
+                    { $match: { classRef: cls._id } },
+                    { $group: { _id: null, totalRevenue: { $sum: '$paidAmount' } } }
+                ]);
+
+                const currentRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+
+                return {
+                    ...cls,
+                    studentCount,
+                    currentRevenue,
+                };
+            })
+        );
+
+        console.log(`📊 Fetched ${classesWithStats.length} classes with student counts and revenue`);
 
         res.json({
             success: true,
-            count: classes.length,
-            data: classes,
+            count: classesWithStats.length,
+            data: classesWithStats,
         });
     } catch (error) {
         console.error('❌ Error fetching classes:', error.message);
@@ -41,11 +67,11 @@ router.get('/', async (req, res) => {
 });
 
 // @route   GET /api/classes/:id
-// @desc    Get single class by ID
+// @desc    Get single class by ID with stats
 // @access  Public
 router.get('/:id', async (req, res) => {
     try {
-        const classDoc = await Class.findById(req.params.id);
+        const classDoc = await Class.findById(req.params.id).lean();
 
         if (!classDoc) {
             return res.status(404).json({
@@ -54,9 +80,21 @@ router.get('/:id', async (req, res) => {
             });
         }
 
+        // TASK 2: Add student count and revenue for single class
+        const studentCount = await Student.countDocuments({ classRef: classDoc._id });
+        const revenueResult = await Student.aggregate([
+            { $match: { classRef: classDoc._id } },
+            { $group: { _id: null, totalRevenue: { $sum: '$paidAmount' } } }
+        ]);
+        const currentRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+
         res.json({
             success: true,
-            data: classDoc,
+            data: {
+                ...classDoc,
+                studentCount,
+                currentRevenue,
+            },
         });
     } catch (error) {
         res.status(500).json({
@@ -77,14 +115,16 @@ router.post('/', async (req, res) => {
         // Sanitize data
         const classData = { ...req.body };
 
-        // Ensure subjects is an array
+        // Handle subjects - can be array of strings or array of {name, fee}
         if (typeof classData.subjects === 'string') {
             classData.subjects = classData.subjects
                 .split(',')
                 .map(s => s.trim())
-                .filter(s => s.length > 0);
+                .filter(s => s.length > 0)
+                .map(s => ({ name: s, fee: classData.baseFee || 0 }));
         }
 
+        // Ensure subjects is an array
         if (!Array.isArray(classData.subjects)) {
             classData.subjects = [];
         }
@@ -105,7 +145,11 @@ router.post('/', async (req, res) => {
         res.status(201).json({
             success: true,
             message: 'Class created successfully',
-            data: savedClass,
+            data: {
+                ...savedClass.toObject(),
+                studentCount: 0,
+                currentRevenue: 0,
+            },
         });
     } catch (error) {
         console.error('❌ Error creating class:', error.message);
@@ -135,12 +179,13 @@ router.put('/:id', async (req, res) => {
         // Step 2: Sanitize incoming data
         const updateData = { ...req.body };
 
-        // Ensure subjects is an array
+        // Handle subjects - can be array of strings or array of {name, fee}
         if (typeof updateData.subjects === 'string') {
             updateData.subjects = updateData.subjects
                 .split(',')
                 .map(s => s.trim())
-                .filter(s => s.length > 0);
+                .filter(s => s.length > 0)
+                .map(s => ({ name: s, fee: updateData.baseFee || classDoc.baseFee || 0 }));
         }
 
         // Ensure baseFee is a number
@@ -160,12 +205,24 @@ router.put('/:id', async (req, res) => {
         // Step 4: Save
         const updatedClass = await classDoc.save();
 
+        // Get updated stats
+        const studentCount = await Student.countDocuments({ classRef: updatedClass._id });
+        const revenueResult = await Student.aggregate([
+            { $match: { classRef: updatedClass._id } },
+            { $group: { _id: null, totalRevenue: { $sum: '$paidAmount' } } }
+        ]);
+        const currentRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+
         console.log('✅ Class updated:', updatedClass.classId);
 
         res.json({
             success: true,
             message: 'Class updated successfully',
-            data: updatedClass,
+            data: {
+                ...updatedClass.toObject(),
+                studentCount,
+                currentRevenue,
+            },
         });
     } catch (error) {
         console.error('❌ Error updating class:', error.message);
@@ -216,11 +273,20 @@ router.get('/stats/overview', async (req, res) => {
         const totalClasses = await Class.countDocuments();
         const activeClasses = await Class.countDocuments({ status: 'active' });
 
+        // TASK 2: Add total students and revenue
+        const totalStudents = await Student.countDocuments();
+        const revenueResult = await Student.aggregate([
+            { $group: { _id: null, totalRevenue: { $sum: '$paidAmount' } } }
+        ]);
+        const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+
         res.json({
             success: true,
             data: {
                 total: totalClasses,
                 active: activeClasses,
+                totalStudents,
+                totalRevenue,
             },
         });
     } catch (error) {

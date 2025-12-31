@@ -38,7 +38,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { BookOpen, Plus, Search, Loader2, Eye, Edit, Trash2, DollarSign, Users } from "lucide-react";
+import { BookOpen, Plus, Search, Loader2, Edit, Trash2, DollarSign, Users } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { classApi } from "@/lib/api";
 import { toast } from "sonner";
@@ -62,14 +62,20 @@ const classNameOptions = [
   "ECAT Prep",
 ];
 
-// Subject options
+// Subject options with default fees
 const subjectOptions = [
-  { id: "biology", label: "Biology" },
-  { id: "chemistry", label: "Chemistry" },
-  { id: "physics", label: "Physics" },
-  { id: "math", label: "Mathematics" },
-  { id: "english", label: "English" },
+  { id: "Biology", label: "Biology", defaultFee: 3000 },
+  { id: "Chemistry", label: "Chemistry", defaultFee: 2500 },
+  { id: "Physics", label: "Physics", defaultFee: 3000 },
+  { id: "Mathematics", label: "Mathematics", defaultFee: 2500 },
+  { id: "English", label: "English", defaultFee: 2000 },
 ];
+
+// Type for subject with fee
+interface SubjectWithFee {
+  name: string;
+  fee: number;
+}
 
 const Classes = () => {
   const queryClient = useQueryClient();
@@ -87,7 +93,7 @@ const Classes = () => {
   // Form states
   const [formClassName, setFormClassName] = useState("");
   const [formSection, setFormSection] = useState("");
-  const [formSubjects, setFormSubjects] = useState<string[]>([]);
+  const [formSubjects, setFormSubjects] = useState<SubjectWithFee[]>([]);
   const [formBaseFee, setFormBaseFee] = useState("");
   const [formStatus, setFormStatus] = useState("active");
 
@@ -165,7 +171,14 @@ const Classes = () => {
   const populateFormForEdit = (classDoc: any) => {
     setFormClassName(classDoc.className || "");
     setFormSection(classDoc.section || "");
-    setFormSubjects(classDoc.subjects || []);
+    // Handle both old (string[]) and new (SubjectWithFee[]) format
+    const subjects = (classDoc.subjects || []).map((s: any) => {
+      if (typeof s === 'string') {
+        return { name: s, fee: classDoc.baseFee || 0 };
+      }
+      return { name: s.name, fee: s.fee || 0 };
+    });
+    setFormSubjects(subjects);
     setFormBaseFee(String(classDoc.baseFee || ""));
     setFormStatus(classDoc.status || "active");
   };
@@ -214,18 +227,55 @@ const Classes = () => {
     });
   };
 
+  // Toggle subject selection
   const handleSubjectToggle = (subjectId: string) => {
-    setFormSubjects((prev) =>
-      prev.includes(subjectId)
-        ? prev.filter((s) => s !== subjectId)
-        : [...prev, subjectId]
-    );
+    const exists = formSubjects.find(s => s.name === subjectId);
+    if (exists) {
+      setFormSubjects(prev => prev.filter(s => s.name !== subjectId));
+    } else {
+      const subjectOption = subjectOptions.find(s => s.id === subjectId);
+      setFormSubjects(prev => [...prev, {
+        name: subjectId,
+        fee: subjectOption?.defaultFee || Number(formBaseFee) || 0
+      }]);
+    }
   };
 
-  // Calculate stats
+  // Update subject fee
+  const handleSubjectFeeChange = (subjectName: string, fee: number) => {
+    setFormSubjects(prev => prev.map(s =>
+      s.name === subjectName ? { ...s, fee } : s
+    ));
+  };
+
+  // Check if subject is selected
+  const isSubjectSelected = (subjectId: string) => {
+    return formSubjects.some(s => s.name === subjectId);
+  };
+
+  // Get subject fee
+  const getSubjectFee = (subjectId: string) => {
+    const subject = formSubjects.find(s => s.name === subjectId);
+    return subject?.fee || 0;
+  };
+
+  // Calculate total subject fees
+  const totalSubjectFees = formSubjects.reduce((sum, s) => sum + (s.fee || 0), 0);
+
+  // Calculate stats - TASK 2: Use real data from backend
   const activeClasses = classes.filter((c: any) => c.status === "active").length;
-  const totalStudents = 0; // Placeholder - will be populated from students
-  const totalRevenue = classes.reduce((sum: number, c: any) => sum + (c.baseFee || 0), 0);
+  const totalStudents = classes.reduce((sum: number, c: any) => sum + (c.studentCount || 0), 0);
+  const totalRevenue = classes.reduce((sum: number, c: any) => sum + (c.currentRevenue || 0), 0);
+
+  // Helper to display subject fees in table
+  const getSubjectDisplay = (classDoc: any) => {
+    const subjects = classDoc.subjects || [];
+    return subjects.slice(0, 2).map((s: any) => {
+      const name = typeof s === 'string' ? s : s.name;
+      const fee = typeof s === 'object' ? s.fee : null;
+      return { name, fee };
+    });
+  };
 
   return (
     <DashboardLayout title="Classes">
@@ -279,7 +329,7 @@ const Classes = () => {
               <p className="text-2xl font-bold text-foreground">
                 {totalRevenue.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">PKR</span>
               </p>
-              <p className="text-sm text-muted-foreground">Total Base Fees</p>
+              <p className="text-sm text-muted-foreground">Revenue Collected</p>
             </div>
           </div>
         </div>
@@ -332,8 +382,7 @@ const Classes = () => {
                 <TableHead className="font-semibold">ID</TableHead>
                 <TableHead className="font-semibold">Class</TableHead>
                 <TableHead className="font-semibold">Section</TableHead>
-                <TableHead className="font-semibold">Subjects</TableHead>
-                <TableHead className="font-semibold text-right">Base Fee</TableHead>
+                <TableHead className="font-semibold">Subjects & Fees</TableHead>
                 <TableHead className="font-semibold text-center">Students</TableHead>
                 <TableHead className="font-semibold text-right">Revenue</TableHead>
                 <TableHead className="font-semibold text-center">Status</TableHead>
@@ -342,8 +391,11 @@ const Classes = () => {
             </TableHeader>
             <TableBody>
               {classes.map((classDoc: any) => {
-                const studentCount = 0; // Placeholder
-                const revenue = (classDoc.baseFee || 0) * studentCount;
+                const subjectDisplays = getSubjectDisplay(classDoc);
+                const totalFee = (classDoc.subjects || []).reduce((s: number, sub: any) => {
+                  if (typeof sub === 'object' && sub.fee) return s + sub.fee;
+                  return s;
+                }, 0) || classDoc.baseFee || 0;
 
                 return (
                   <TableRow key={classDoc._id} className="hover:bg-secondary/50">
@@ -360,12 +412,17 @@ const Classes = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
-                        {(classDoc.subjects || []).slice(0, 2).map((subject: string) => (
+                        {subjectDisplays.map((subject: any) => (
                           <span
-                            key={subject}
+                            key={subject.name}
                             className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-xs capitalize"
                           >
-                            {subject}
+                            {subject.name}
+                            {subject.fee !== null && (
+                              <span className="ml-1 text-emerald-600 font-medium">
+                                ({subject.fee.toLocaleString()})
+                              </span>
+                            )}
                           </span>
                         ))}
                         {(classDoc.subjects || []).length > 2 && (
@@ -375,18 +432,21 @@ const Classes = () => {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {(classDoc.baseFee || 0).toLocaleString()} PKR
-                    </TableCell>
+                    {/* TASK 2: Student Count */}
                     <TableCell className="text-center">
-                      <span className="inline-flex items-center justify-center h-7 min-w-[32px] px-2 rounded-full bg-slate-100 text-slate-600 font-semibold text-sm">
-                        {studentCount}
-                      </span>
+                      <div className="flex flex-col items-center">
+                        <span className="text-lg font-bold text-sky-600">{classDoc.studentCount || 0}</span>
+                        <span className="text-[10px] text-muted-foreground">enrolled</span>
+                      </div>
                     </TableCell>
+                    {/* TASK 2: Revenue from this class */}
                     <TableCell className="text-right">
-                      <span className="font-semibold text-green-600">
-                        {revenue.toLocaleString()} PKR
-                      </span>
+                      <div className="flex flex-col items-end">
+                        <span className="font-semibold text-green-600">
+                          {(classDoc.currentRevenue || 0).toLocaleString()} PKR
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">collected</span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-center">
                       <StatusBadge status={classDoc.status === "active" ? "active" : "inactive"} />
@@ -424,7 +484,7 @@ const Classes = () => {
 
       {/* Add Class Modal */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-        <DialogContent className="sm:max-w-[500px] bg-card border-border">
+        <DialogContent className="sm:max-w-[550px] bg-card border-border max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold text-foreground flex items-center gap-2">
               <div className="bg-sky-100 p-2 rounded-lg">
@@ -433,7 +493,7 @@ const Classes = () => {
               Add New Class
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Create a new class with section and fee structure.
+              Create a new class with individual subject pricing.
             </DialogDescription>
           </DialogHeader>
 
@@ -471,46 +531,85 @@ const Classes = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Subjects</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {subjectOptions.map((subject) => (
-                  <div
-                    key={subject.id}
-                    className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${formSubjects.includes(subject.id)
-                        ? "border-sky-500 bg-sky-50 text-sky-700"
-                        : "border-border hover:border-sky-300"
-                      }`}
-                    onClick={() => handleSubjectToggle(subject.id)}
-                  >
+            {/* Subjects with Individual Fees */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Subjects & Pricing</Label>
+                {formSubjects.length > 0 && (
+                  <span className="text-sm font-semibold text-green-600">
+                    Total: {totalSubjectFees.toLocaleString()} PKR
+                  </span>
+                )}
+              </div>
+              <div className="space-y-2">
+                {subjectOptions.map((subject) => {
+                  const isSelected = isSubjectSelected(subject.id);
+                  const currentFee = getSubjectFee(subject.id);
+
+                  return (
                     <div
-                      className={`w-4 h-4 rounded border flex items-center justify-center ${formSubjects.includes(subject.id)
-                          ? "bg-sky-500 border-sky-500"
-                          : "border-slate-300"
+                      key={subject.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isSelected
+                        ? "border-sky-500 bg-sky-50"
+                        : "border-border hover:border-sky-300"
                         }`}
                     >
-                      {formSubjects.includes(subject.id) && (
-                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
-                        </svg>
+                      {/* Checkbox */}
+                      <div
+                        className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer shrink-0 ${isSelected
+                          ? "bg-sky-500 border-sky-500"
+                          : "border-slate-300"
+                          }`}
+                        onClick={() => handleSubjectToggle(subject.id)}
+                      >
+                        {isSelected && (
+                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                          </svg>
+                        )}
+                      </div>
+
+                      {/* Subject Name */}
+                      <span
+                        className={`flex-1 text-sm font-medium cursor-pointer ${isSelected ? 'text-sky-700' : 'text-foreground'
+                          }`}
+                        onClick={() => handleSubjectToggle(subject.id)}
+                      >
+                        {subject.label}
+                      </span>
+
+                      {/* Fee Input */}
+                      {isSelected && (
+                        <div className="relative w-32">
+                          <Input
+                            type="number"
+                            value={currentFee || ''}
+                            onChange={(e) => handleSubjectFeeChange(subject.id, Number(e.target.value) || 0)}
+                            className="h-8 pr-12 text-right font-medium bg-white"
+                            placeholder="0"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
+                            PKR
+                          </span>
+                        </div>
                       )}
                     </div>
-                    <span className="text-sm">{subject.label}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Base Fee (PKR)</Label>
+                <Label>Default Fee (PKR)</Label>
                 <Input
                   type="number"
-                  placeholder="0"
+                  placeholder="Fallback fee"
                   value={formBaseFee}
                   onChange={(e) => setFormBaseFee(e.target.value)}
                   className="bg-background"
                 />
+                <p className="text-xs text-muted-foreground">Used if subject fee is not set</p>
               </div>
               <div className="space-y-2">
                 <Label>Status</Label>
@@ -552,7 +651,7 @@ const Classes = () => {
 
       {/* Edit Class Modal */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="sm:max-w-[500px] bg-card border-border">
+        <DialogContent className="sm:max-w-[550px] bg-card border-border max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold text-foreground flex items-center gap-2">
               <div className="bg-sky-100 p-2 rounded-lg">
@@ -566,7 +665,7 @@ const Classes = () => {
               )}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Update class information and fee structure.
+              Update class information and subject pricing.
             </DialogDescription>
           </DialogHeader>
 
@@ -604,42 +703,77 @@ const Classes = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Subjects</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {subjectOptions.map((subject) => (
-                  <div
-                    key={subject.id}
-                    className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${formSubjects.includes(subject.id)
-                        ? "border-sky-500 bg-sky-50 text-sky-700"
-                        : "border-border hover:border-sky-300"
-                      }`}
-                    onClick={() => handleSubjectToggle(subject.id)}
-                  >
+            {/* Subjects with Individual Fees */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Subjects & Pricing</Label>
+                {formSubjects.length > 0 && (
+                  <span className="text-sm font-semibold text-green-600">
+                    Total: {totalSubjectFees.toLocaleString()} PKR
+                  </span>
+                )}
+              </div>
+              <div className="space-y-2">
+                {subjectOptions.map((subject) => {
+                  const isSelected = isSubjectSelected(subject.id);
+                  const currentFee = getSubjectFee(subject.id);
+
+                  return (
                     <div
-                      className={`w-4 h-4 rounded border flex items-center justify-center ${formSubjects.includes(subject.id)
-                          ? "bg-sky-500 border-sky-500"
-                          : "border-slate-300"
+                      key={subject.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isSelected
+                        ? "border-sky-500 bg-sky-50"
+                        : "border-border hover:border-sky-300"
                         }`}
                     >
-                      {formSubjects.includes(subject.id) && (
-                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
-                        </svg>
+                      <div
+                        className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer shrink-0 ${isSelected
+                          ? "bg-sky-500 border-sky-500"
+                          : "border-slate-300"
+                          }`}
+                        onClick={() => handleSubjectToggle(subject.id)}
+                      >
+                        {isSelected && (
+                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                          </svg>
+                        )}
+                      </div>
+
+                      <span
+                        className={`flex-1 text-sm font-medium cursor-pointer ${isSelected ? 'text-sky-700' : 'text-foreground'
+                          }`}
+                        onClick={() => handleSubjectToggle(subject.id)}
+                      >
+                        {subject.label}
+                      </span>
+
+                      {isSelected && (
+                        <div className="relative w-32">
+                          <Input
+                            type="number"
+                            value={currentFee || ''}
+                            onChange={(e) => handleSubjectFeeChange(subject.id, Number(e.target.value) || 0)}
+                            className="h-8 pr-12 text-right font-medium bg-white"
+                            placeholder="0"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
+                            PKR
+                          </span>
+                        </div>
                       )}
                     </div>
-                    <span className="text-sm">{subject.label}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Base Fee (PKR)</Label>
+                <Label>Default Fee (PKR)</Label>
                 <Input
                   type="number"
-                  placeholder="0"
+                  placeholder="Fallback fee"
                   value={formBaseFee}
                   onChange={(e) => setFormBaseFee(e.target.value)}
                   className="bg-background"

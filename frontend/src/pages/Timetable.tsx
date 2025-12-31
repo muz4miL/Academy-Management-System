@@ -12,398 +12,771 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Clock, Trash2, Edit } from "lucide-react";
-import { toast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Clock, Plus, Loader2, Edit, Trash2, MapPin, Search, User } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { timetableApi, classApi, teacherApi } from "@/lib/api";
+import { toast } from "sonner";
 
-interface TimetableEntry {
-  id: string;
-  day: string;
-  teacherName: string;
-  subject: string;
-  startTime: string;
-  endTime: string;
-  className: string;
-}
+// Days of the week
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-const mockTeachers = [
-  { id: "1", name: "Dr. Ahmed Khan" },
-  { id: "2", name: "Prof. Sara Ali" },
-  { id: "3", name: "Mr. Hassan Raza" },
-  { id: "4", name: "Ms. Fatima Zahra" },
+// Time slots for the grid
+const TIME_SLOTS = [
+  '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
+  '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM'
 ];
 
-const subjects = ["Physics", "Chemistry", "Biology", "Mathematics", "English"];
-const classes = ["9th", "10th", "11th", "12th", "MDCAT", "ECAT"];
+// Subject options
+const SUBJECTS = ['Biology', 'Chemistry', 'Physics', 'Mathematics', 'English'];
+
+// TASK 1: Subject-specific pastel colors
+const getSubjectStyles = (subject: string) => {
+  const subjectLower = subject?.toLowerCase() || '';
+
+  if (subjectLower.includes('biology')) {
+    return {
+      bg: 'bg-gradient-to-br from-emerald-100 to-emerald-200',
+      border: 'border-emerald-300',
+      text: 'text-emerald-800',
+      subtext: 'text-emerald-600',
+    };
+  }
+  if (subjectLower.includes('physics')) {
+    return {
+      bg: 'bg-gradient-to-br from-sky-100 to-sky-200',
+      border: 'border-sky-300',
+      text: 'text-sky-800',
+      subtext: 'text-sky-600',
+    };
+  }
+  if (subjectLower.includes('math')) {
+    return {
+      bg: 'bg-gradient-to-br from-purple-100 to-purple-200',
+      border: 'border-purple-300',
+      text: 'text-purple-800',
+      subtext: 'text-purple-600',
+    };
+  }
+  if (subjectLower.includes('english')) {
+    return {
+      bg: 'bg-gradient-to-br from-rose-100 to-rose-200',
+      border: 'border-rose-300',
+      text: 'text-rose-800',
+      subtext: 'text-rose-600',
+    };
+  }
+  if (subjectLower.includes('chemistry')) {
+    return {
+      bg: 'bg-gradient-to-br from-amber-100 to-amber-200',
+      border: 'border-amber-300',
+      text: 'text-amber-800',
+      subtext: 'text-amber-600',
+    };
+  }
+  // Default sky blue
+  return {
+    bg: 'bg-gradient-to-br from-slate-100 to-slate-200',
+    border: 'border-slate-300',
+    text: 'text-slate-800',
+    subtext: 'text-slate-600',
+  };
+};
 
 const Timetable = () => {
-  const [entries, setEntries] = useState<TimetableEntry[]>([
-    {
-      id: "1",
-      day: "Monday",
-      teacherName: "Dr. Ahmed Khan",
-      subject: "Physics",
-      startTime: "09:00",
-      endTime: "10:30",
-      className: "11th",
-    },
-    {
-      id: "2",
-      day: "Monday",
-      teacherName: "Prof. Sara Ali",
-      subject: "Chemistry",
-      startTime: "10:30",
-      endTime: "12:00",
-      className: "11th",
-    },
-    {
-      id: "3",
-      day: "Tuesday",
-      teacherName: "Mr. Hassan Raza",
-      subject: "Mathematics",
-      startTime: "09:00",
-      endTime: "10:30",
-      className: "10th",
-    },
-    {
-      id: "4",
-      day: "Wednesday",
-      teacherName: "Ms. Fatima Zahra",
-      subject: "Biology",
-      startTime: "14:00",
-      endTime: "15:30",
-      className: "12th",
-    },
-  ]);
+  const queryClient = useQueryClient();
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingEntry, setEditingEntry] = useState<TimetableEntry | null>(null);
-  const [formData, setFormData] = useState({
-    day: "",
-    teacherId: "",
-    subject: "",
-    startTime: "",
-    endTime: "",
-    className: "",
+  // TASK 2: Speed-Search filter state
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // Modal states
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
+
+  // Form states
+  const [formClassId, setFormClassId] = useState("");
+  const [formTeacherId, setFormTeacherId] = useState("");
+  const [formSubject, setFormSubject] = useState("");
+  const [formDay, setFormDay] = useState("");
+  const [formStartTime, setFormStartTime] = useState("");
+  const [formEndTime, setFormEndTime] = useState("");
+  const [formRoom, setFormRoom] = useState("");
+
+  // Fetch timetable entries
+  const { data: timetableData, isLoading } = useQuery({
+    queryKey: ["timetable"],
+    queryFn: () => timetableApi.getAll(),
   });
-  const [filterDay, setFilterDay] = useState<string>("all");
 
-  const handleSubmit = () => {
-    if (!formData.day || !formData.teacherId || !formData.subject || !formData.startTime || !formData.endTime || !formData.className) {
-      toast({
-        title: "Error",
-        description: "Please fill all fields",
-        variant: "destructive",
-      });
+  // Fetch classes for dropdown
+  const { data: classesData } = useQuery({
+    queryKey: ["classes", { status: "active" }],
+    queryFn: () => classApi.getAll({ status: "active" }),
+  });
+
+  // Fetch teachers for dropdown
+  const { data: teachersData } = useQuery({
+    queryKey: ["teachers", { status: "active" }],
+    queryFn: () => teacherApi.getAll({ status: "active" }),
+  });
+
+  const entries = timetableData?.data || [];
+  const classes = classesData?.data || [];
+  const teachers = teachersData?.data || [];
+
+  // Create mutation
+  const createEntryMutation = useMutation({
+    mutationFn: timetableApi.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["timetable"] });
+      toast.success("Entry Created", { description: "Timetable entry added successfully." });
+      resetForm();
+      setIsAddModalOpen(false);
+    },
+    onError: (error: any) => {
+      toast.error("Failed to create entry", { description: error.message });
+    },
+  });
+
+  // Update mutation
+  const updateEntryMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => timetableApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["timetable"] });
+      toast.success("Entry Updated");
+      resetForm();
+      setIsEditModalOpen(false);
+      setSelectedEntry(null);
+    },
+    onError: (error: any) => {
+      toast.error("Failed to update entry", { description: error.message });
+    },
+  });
+
+  // Delete mutation
+  const deleteEntryMutation = useMutation({
+    mutationFn: timetableApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["timetable"] });
+      toast.success("Entry Deleted");
+      setIsDeleteDialogOpen(false);
+      setSelectedEntry(null);
+    },
+    onError: (error: any) => {
+      toast.error("Failed to delete entry", { description: error.message });
+    },
+  });
+
+  // Reset form
+  const resetForm = () => {
+    setFormClassId("");
+    setFormTeacherId("");
+    setFormSubject("");
+    setFormDay("");
+    setFormStartTime("");
+    setFormEndTime("");
+    setFormRoom("");
+  };
+
+  // Populate form for edit
+  const populateFormForEdit = (entry: any) => {
+    setFormClassId(entry.classId?._id || entry.classId || "");
+    setFormTeacherId(entry.teacherId?._id || entry.teacherId || "");
+    setFormSubject(entry.subject || "");
+    setFormDay(entry.day || "");
+    setFormStartTime(entry.startTime || "");
+    setFormEndTime(entry.endTime || "");
+    setFormRoom(entry.room || "");
+  };
+
+  // Handlers
+  const handleEdit = (entry: any) => {
+    setSelectedEntry(entry);
+    populateFormForEdit(entry);
+    setIsEditModalOpen(true);
+  };
+
+  const handleDelete = (entry: any) => {
+    setSelectedEntry(entry);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleSubmitAdd = () => {
+    if (!formClassId || !formTeacherId || !formSubject || !formDay || !formStartTime || !formEndTime) {
+      toast.error("Please fill all required fields");
       return;
     }
+    createEntryMutation.mutate({
+      classId: formClassId,
+      teacherId: formTeacherId,
+      subject: formSubject,
+      day: formDay,
+      startTime: formStartTime,
+      endTime: formEndTime,
+      room: formRoom,
+    });
+  };
 
-    const teacher = mockTeachers.find((t) => t.id === formData.teacherId);
-    
-    if (editingEntry) {
-      setEntries((prev) =>
-        prev.map((entry) =>
-          entry.id === editingEntry.id
-            ? {
-                ...entry,
-                day: formData.day,
-                teacherName: teacher?.name || "",
-                subject: formData.subject,
-                startTime: formData.startTime,
-                endTime: formData.endTime,
-                className: formData.className,
-              }
-            : entry
-        )
-      );
-      toast({ title: "Success", description: "Timetable entry updated" });
-    } else {
-      const newEntry: TimetableEntry = {
-        id: Date.now().toString(),
-        day: formData.day,
-        teacherName: teacher?.name || "",
-        subject: formData.subject,
-        startTime: formData.startTime,
-        endTime: formData.endTime,
-        className: formData.className,
-      };
-      setEntries((prev) => [...prev, newEntry]);
-      toast({ title: "Success", description: "Timetable entry added" });
+  const handleSubmitEdit = () => {
+    if (!selectedEntry?._id) return;
+    updateEntryMutation.mutate({
+      id: selectedEntry._id,
+      data: {
+        classId: formClassId,
+        teacherId: formTeacherId,
+        subject: formSubject,
+        day: formDay,
+        startTime: formStartTime,
+        endTime: formEndTime,
+        room: formRoom,
+      },
+    });
+  };
+
+  // Group entries by day for grid view
+  const getEntriesForDayAndTime = (day: string, timeSlot: string) => {
+    return entries.filter((entry: any) => {
+      return entry.day === day && entry.startTime === timeSlot;
+    });
+  };
+
+  // Get class display name
+  const getClassDisplay = (entry: any) => {
+    if (entry.classId && typeof entry.classId === 'object') {
+      return `${entry.classId.className} - ${entry.classId.section}`;
     }
-
-    resetForm();
+    return 'Unknown Class';
   };
 
-  const resetForm = () => {
-    setFormData({
-      day: "",
-      teacherId: "",
-      subject: "",
-      startTime: "",
-      endTime: "",
-      className: "",
-    });
-    setEditingEntry(null);
-    setIsDialogOpen(false);
+  // Get teacher display name
+  const getTeacherDisplay = (entry: any) => {
+    if (entry.teacherId && typeof entry.teacherId === 'object') {
+      return entry.teacherId.name;
+    }
+    return 'Unknown Teacher';
   };
 
-  const handleEdit = (entry: TimetableEntry) => {
-    const teacher = mockTeachers.find((t) => t.name === entry.teacherName);
-    setEditingEntry(entry);
-    setFormData({
-      day: entry.day,
-      teacherId: teacher?.id || "",
-      subject: entry.subject,
-      startTime: entry.startTime,
-      endTime: entry.endTime,
-      className: entry.className,
-    });
-    setIsDialogOpen(true);
-  };
+  // TASK 2: Check if entry matches search term
+  const isEntryHighlighted = (entry: any) => {
+    if (!searchTerm.trim()) return true; // No search = all highlighted
 
-  const handleDelete = (id: string) => {
-    setEntries((prev) => prev.filter((entry) => entry.id !== id));
-    toast({ title: "Deleted", description: "Timetable entry removed" });
-  };
+    const term = searchTerm.toLowerCase();
+    const teacherName = getTeacherDisplay(entry).toLowerCase();
+    const className = getClassDisplay(entry).toLowerCase();
+    const subject = (entry.subject || '').toLowerCase();
 
-  const filteredEntries = filterDay === "all" ? entries : entries.filter((e) => e.day === filterDay);
-
-  const calculateDuration = (start: string, end: string) => {
-    const [startH, startM] = start.split(":").map(Number);
-    const [endH, endM] = end.split(":").map(Number);
-    const totalMinutes = (endH * 60 + endM) - (startH * 60 + startM);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+    return teacherName.includes(term) || className.includes(term) || subject.includes(term);
   };
 
   return (
     <DashboardLayout title="Timetable">
       <HeaderBanner
-        title="Academy Timetable"
-        subtitle="Manage teacher schedules and class periods"
+        title="Weekly Timetable"
+        subtitle={`Total Entries: ${entries.length}`}
       >
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-primary-foreground text-primary hover:bg-primary-foreground/90">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Period
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-card sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>{editingEntry ? "Edit Period" : "Add New Period"}</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label>Day</Label>
-                <Select value={formData.day} onValueChange={(val) => setFormData({ ...formData, day: val })}>
-                  <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Select day" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    {days.map((day) => (
-                      <SelectItem key={day} value={day}>{day}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+        <Button
+          className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+          onClick={() => { resetForm(); setIsAddModalOpen(true); }}
+          style={{ borderRadius: "0.75rem" }}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Add Entry
+        </Button>
+      </HeaderBanner>
 
-              <div className="space-y-2">
-                <Label>Teacher</Label>
-                <Select value={formData.teacherId} onValueChange={(val) => setFormData({ ...formData, teacherId: val })}>
-                  <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Select teacher" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    {mockTeachers.map((teacher) => (
-                      <SelectItem key={teacher.id} value={teacher.id}>{teacher.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+      {/* TASK 2: Speed-Search Filter */}
+      <div className="mt-6 flex flex-wrap items-center gap-4">
+        <div className="relative flex-1 min-w-[280px] max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search by teacher, class, or subject..."
+            className="pl-9 bg-card border-border"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        {searchTerm && (
+          <p className="text-sm text-muted-foreground">
+            Highlighting: <span className="font-semibold text-sky-600">"{searchTerm}"</span>
+          </p>
+        )}
+      </div>
 
-              <div className="space-y-2">
-                <Label>Subject</Label>
-                <Select value={formData.subject} onValueChange={(val) => setFormData({ ...formData, subject: val })}>
-                  <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Select subject" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    {subjects.map((subj) => (
-                      <SelectItem key={subj} value={subj}>{subj}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+      {/* Subject Color Legend */}
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+        <span className="text-muted-foreground">Subject Colors:</span>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded bg-gradient-to-br from-emerald-100 to-emerald-200 border border-emerald-300"></div>
+          <span>Biology</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded bg-gradient-to-br from-sky-100 to-sky-200 border border-sky-300"></div>
+          <span>Physics</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded bg-gradient-to-br from-purple-100 to-purple-200 border border-purple-300"></div>
+          <span>Mathematics</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded bg-gradient-to-br from-rose-100 to-rose-200 border border-rose-300"></div>
+          <span>English</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded bg-gradient-to-br from-amber-100 to-amber-200 border border-amber-300"></div>
+          <span>Chemistry</span>
+        </div>
+      </div>
 
+      {/* Weekly Grid View */}
+      <div className="mt-6 overflow-x-auto">
+        {isLoading ? (
+          <div className="flex items-center justify-center p-12 bg-card rounded-xl border border-border">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="min-w-[1000px] rounded-xl border border-border bg-card overflow-hidden">
+            {/* Grid Header - Days */}
+            <div className="grid grid-cols-7 bg-sky-600 text-white">
+              <div className="p-3 text-center font-semibold border-r border-sky-500">
+                <Clock className="h-4 w-4 mx-auto mb-1" />
+                Time
+              </div>
+              {DAYS.map((day) => (
+                <div key={day} className="p-3 text-center font-semibold border-r border-sky-500 last:border-r-0">
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* Time Slots Rows */}
+            {TIME_SLOTS.map((timeSlot, idx) => (
+              <div
+                key={timeSlot}
+                className={`grid grid-cols-7 border-b border-border last:border-b-0 ${idx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50 dark:bg-slate-800/50'}`}
+              >
+                {/* Time Column */}
+                <div className="p-3 text-center text-sm font-medium text-muted-foreground border-r border-border bg-slate-100 dark:bg-slate-800">
+                  {timeSlot}
+                </div>
+
+                {/* Day Columns */}
+                {DAYS.map((day) => {
+                  const dayEntries = getEntriesForDayAndTime(day, timeSlot);
+
+                  return (
+                    <div key={`${day}-${timeSlot}`} className="p-1 min-h-[90px] border-r border-border last:border-r-0">
+                      {dayEntries.map((entry: any) => {
+                        const styles = getSubjectStyles(entry.subject);
+                        const isHighlighted = isEntryHighlighted(entry);
+
+                        return (
+                          <div
+                            key={entry._id}
+                            className={`group relative rounded-lg p-2.5 mb-1 cursor-pointer border transition-all duration-200 hover:shadow-md hover:scale-[1.02] ${styles.bg} ${styles.border} ${!isHighlighted ? 'opacity-30' : ''
+                              }`}
+                            onClick={() => handleEdit(entry)}
+                          >
+                            {/* Subject - Bold */}
+                            <div className={`font-bold text-sm truncate ${styles.text}`}>
+                              {entry.subject}
+                            </div>
+
+                            {/* Class */}
+                            <div className={`text-xs truncate mt-0.5 ${styles.subtext}`}>
+                              {getClassDisplay(entry)}
+                            </div>
+
+                            {/* Teacher - Secondary */}
+                            <div className={`text-xs truncate flex items-center gap-1 mt-0.5 ${styles.subtext} opacity-75`}>
+                              <User className="h-3 w-3" />
+                              {getTeacherDisplay(entry)}
+                            </div>
+
+                            {/* Room with Location Icon */}
+                            {entry.room && (
+                              <div className={`text-[10px] flex items-center gap-0.5 mt-1 ${styles.subtext} opacity-60`}>
+                                <MapPin className="h-2.5 w-2.5" />
+                                {entry.room}
+                              </div>
+                            )}
+
+                            {/* Time Range */}
+                            <div className={`text-[10px] mt-1 ${styles.subtext} opacity-60`}>
+                              {entry.startTime} - {entry.endTime}
+                            </div>
+
+                            {/* Delete button on hover */}
+                            <button
+                              className={`absolute top-1 right-1 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity ${styles.text} hover:bg-white/50`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(entry);
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Add Entry Modal */}
+      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+        <DialogContent className="sm:max-w-[500px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-foreground flex items-center gap-2">
+              <div className="bg-sky-100 p-2 rounded-lg">
+                <Plus className="h-5 w-5 text-sky-600" />
+              </div>
+              Add Timetable Entry
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Schedule a class for a specific day and time.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Class</Label>
-                <Select value={formData.className} onValueChange={(val) => setFormData({ ...formData, className: val })}>
+                <Label>Class *</Label>
+                <Select value={formClassId} onValueChange={setFormClassId}>
                   <SelectTrigger className="bg-background">
                     <SelectValue placeholder="Select class" />
                   </SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    {classes.map((cls) => (
-                      <SelectItem key={cls} value={cls}>{cls}</SelectItem>
+                  <SelectContent>
+                    {classes.map((cls: any) => (
+                      <SelectItem key={cls._id} value={cls._id}>
+                        {cls.className} - {cls.section}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Start Time</Label>
-                  <Input
-                    type="time"
-                    value={formData.startTime}
-                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>End Time</Label>
-                  <Input
-                    type="time"
-                    value={formData.endTime}
-                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <Button variant="outline" onClick={resetForm} className="flex-1">
-                  Cancel
-                </Button>
-                <Button onClick={handleSubmit} className="flex-1">
-                  {editingEntry ? "Update" : "Add Period"}
-                </Button>
+              <div className="space-y-2">
+                <Label>Teacher *</Label>
+                <Select value={formTeacherId} onValueChange={setFormTeacherId}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select teacher" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teachers.map((teacher: any) => (
+                      <SelectItem key={teacher._id} value={teacher._id}>
+                        {teacher.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
-      </HeaderBanner>
 
-      {/* Filter */}
-      <div className="mt-6 flex items-center gap-4">
-        <Label>Filter by Day:</Label>
-        <Select value={filterDay} onValueChange={setFilterDay}>
-          <SelectTrigger className="w-48 bg-card">
-            <SelectValue placeholder="All Days" />
-          </SelectTrigger>
-          <SelectContent className="bg-popover">
-            <SelectItem value="all">All Days</SelectItem>
-            {days.map((day) => (
-              <SelectItem key={day} value={day}>{day}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Timetable Display */}
-      <div className="mt-6 rounded-xl border border-border bg-card card-shadow overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead>Day</TableHead>
-              <TableHead>Teacher</TableHead>
-              <TableHead>Subject</TableHead>
-              <TableHead>Class</TableHead>
-              <TableHead>Time</TableHead>
-              <TableHead>Duration</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredEntries.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                  No timetable entries found
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredEntries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell className="font-medium">{entry.day}</TableCell>
-                  <TableCell>{entry.teacherName}</TableCell>
-                  <TableCell>{entry.subject}</TableCell>
-                  <TableCell>{entry.className}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Clock className="h-3 w-3 text-muted-foreground" />
-                      {entry.startTime} - {entry.endTime}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="rounded-full bg-primary-light px-2 py-1 text-xs font-medium text-primary">
-                      {calculateDuration(entry.startTime, entry.endTime)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="icon" onClick={() => handleEdit(entry)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(entry.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Weekly Overview */}
-      <div className="mt-8">
-        <h3 className="mb-4 text-lg font-semibold text-foreground">Weekly Overview</h3>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {days.map((day) => {
-            const dayEntries = entries.filter((e) => e.day === day);
-            return (
-              <div key={day} className="rounded-xl border border-border bg-card p-4 card-shadow">
-                <h4 className="mb-3 font-semibold text-foreground">{day}</h4>
-                {dayEntries.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No periods scheduled</p>
-                ) : (
-                  <div className="space-y-2">
-                    {dayEntries.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className="rounded-lg bg-primary-light p-2 text-sm"
-                      >
-                        <div className="font-medium text-primary">{entry.subject}</div>
-                        <div className="text-muted-foreground">
-                          {entry.teacherName} • {entry.className}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {entry.startTime} - {entry.endTime}
-                        </div>
-                      </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Subject *</Label>
+                <Select value={formSubject} onValueChange={setFormSubject}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select subject" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SUBJECTS.map((subject) => (
+                      <SelectItem key={subject} value={subject}>
+                        {subject}
+                      </SelectItem>
                     ))}
-                  </div>
-                )}
+                  </SelectContent>
+                </Select>
               </div>
-            );
-          })}
-        </div>
-      </div>
+              <div className="space-y-2">
+                <Label>Day *</Label>
+                <Select value={formDay} onValueChange={setFormDay}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select day" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DAYS.map((day) => (
+                      <SelectItem key={day} value={day}>
+                        {day}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Start Time *</Label>
+                <Select value={formStartTime} onValueChange={setFormStartTime}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIME_SLOTS.map((time) => (
+                      <SelectItem key={time} value={time}>
+                        {time}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>End Time *</Label>
+                <Select value={formEndTime} onValueChange={setFormEndTime}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIME_SLOTS.map((time) => (
+                      <SelectItem key={time} value={time}>
+                        {time}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Room (Optional)</Label>
+              <Input
+                placeholder="e.g., Room 101"
+                value={formRoom}
+                onChange={(e) => setFormRoom(e.target.value)}
+                className="bg-background"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitAdd}
+              disabled={createEntryMutation.isPending}
+              className="bg-sky-600 text-white hover:bg-sky-700"
+              style={{ borderRadius: "0.75rem" }}
+            >
+              {createEntryMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                "Add Entry"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Entry Modal */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="sm:max-w-[500px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-foreground flex items-center gap-2">
+              <div className="bg-sky-100 p-2 rounded-lg">
+                <Edit className="h-5 w-5 text-sky-600" />
+              </div>
+              Edit Entry
+              {selectedEntry?.entryId && (
+                <span className="ml-2 px-3 py-1 rounded-full bg-sky-600 text-white text-sm font-mono">
+                  {selectedEntry.entryId}
+                </span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Class *</Label>
+                <Select value={formClassId} onValueChange={setFormClassId}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select class" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {classes.map((cls: any) => (
+                      <SelectItem key={cls._id} value={cls._id}>
+                        {cls.className} - {cls.section}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Teacher *</Label>
+                <Select value={formTeacherId} onValueChange={setFormTeacherId}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select teacher" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teachers.map((teacher: any) => (
+                      <SelectItem key={teacher._id} value={teacher._id}>
+                        {teacher.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Subject *</Label>
+                <Select value={formSubject} onValueChange={setFormSubject}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select subject" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SUBJECTS.map((subject) => (
+                      <SelectItem key={subject} value={subject}>
+                        {subject}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Day *</Label>
+                <Select value={formDay} onValueChange={setFormDay}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select day" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DAYS.map((day) => (
+                      <SelectItem key={day} value={day}>
+                        {day}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Start Time *</Label>
+                <Select value={formStartTime} onValueChange={setFormStartTime}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIME_SLOTS.map((time) => (
+                      <SelectItem key={time} value={time}>
+                        {time}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>End Time *</Label>
+                <Select value={formEndTime} onValueChange={setFormEndTime}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIME_SLOTS.map((time) => (
+                      <SelectItem key={time} value={time}>
+                        {time}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Room (Optional)</Label>
+              <Input
+                value={formRoom}
+                onChange={(e) => setFormRoom(e.target.value)}
+                className="bg-background"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitEdit}
+              disabled={updateEntryMutation.isPending}
+              className="bg-sky-600 text-white hover:bg-sky-700"
+              style={{ borderRadius: "0.75rem" }}
+            >
+              {updateEntryMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent className="bg-card border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Timetable Entry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this scheduled class? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteEntryMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (selectedEntry?._id) deleteEntryMutation.mutate(selectedEntry._id);
+              }}
+              disabled={deleteEntryMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteEntryMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Entry"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 };

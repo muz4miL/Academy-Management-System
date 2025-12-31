@@ -4,8 +4,13 @@ const API_BASE_URL = 'http://localhost:5000/api';
 // Teacher API Endpoints
 export const teacherApi = {
     // Get all teachers
-    getAll: async () => {
-        const response = await fetch(`${API_BASE_URL}/teachers`);
+    getAll: async (filters?: { status?: string; search?: string }) => {
+        const queryParams = new URLSearchParams();
+        if (filters?.status) queryParams.append('status', filters.status);
+        if (filters?.search) queryParams.append('search', filters.search);
+
+        const url = `${API_BASE_URL}/teachers${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        const response = await fetch(url);
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to fetch teachers');
@@ -100,11 +105,12 @@ export const settingsApi = {
 // Student API Endpoints
 export const studentApi = {
     // Get all students
-    getAll: async (filters?: { class?: string; group?: string; search?: string }) => {
+    getAll: async (filters?: { class?: string; group?: string; search?: string; sessionRef?: string }) => {
         const queryParams = new URLSearchParams();
         if (filters?.class) queryParams.append('class', filters.class);
         if (filters?.group) queryParams.append('group', filters.group);
         if (filters?.search) queryParams.append('search', filters.search);
+        if (filters?.sessionRef) queryParams.append('sessionRef', filters.sessionRef);
 
         const url = `${API_BASE_URL}/students${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
         const response = await fetch(url);
@@ -237,6 +243,144 @@ export const classApi = {
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to delete class');
+        }
+        return data;
+    },
+};
+
+// Session API Endpoints
+export const sessionApi = {
+    // Get all sessions
+    getAll: async (filters?: { status?: string; search?: string }) => {
+        const queryParams = new URLSearchParams();
+        if (filters?.status) queryParams.append('status', filters.status);
+        if (filters?.search) queryParams.append('search', filters.search);
+
+        const url = `${API_BASE_URL}/sessions${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch sessions');
+        }
+        return data;
+    },
+
+    // Get single session by ID
+    getById: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/sessions/${id}`);
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch session');
+        }
+        return data;
+    },
+
+    // Create new session
+    create: async (sessionData: any) => {
+        const response = await fetch(`${API_BASE_URL}/sessions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sessionData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to create session');
+        }
+        return data;
+    },
+
+    // Update session
+    update: async (id: string, sessionData: any) => {
+        const response = await fetch(`${API_BASE_URL}/sessions/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sessionData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to update session');
+        }
+        return data;
+    },
+
+    // Delete session
+    delete: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/sessions/${id}`, {
+            method: 'DELETE',
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to delete session');
+        }
+        return data;
+    },
+};
+
+// Timetable API Endpoints
+export const timetableApi = {
+    // Get all timetable entries
+    getAll: async (filters?: { classId?: string; teacherId?: string; day?: string; status?: string }) => {
+        const queryParams = new URLSearchParams();
+        if (filters?.classId) queryParams.append('classId', filters.classId);
+        if (filters?.teacherId) queryParams.append('teacherId', filters.teacherId);
+        if (filters?.day) queryParams.append('day', filters.day);
+        if (filters?.status) queryParams.append('status', filters.status);
+
+        const url = `${API_BASE_URL}/timetable${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch timetable');
+        }
+        return data;
+    },
+
+    // Get single entry by ID
+    getById: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/timetable/${id}`);
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch timetable entry');
+        }
+        return data;
+    },
+
+    // Create new entry
+    create: async (entryData: any) => {
+        const response = await fetch(`${API_BASE_URL}/timetable`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(entryData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to create timetable entry');
+        }
+        return data;
+    },
+
+    // Update entry
+    update: async (id: string, entryData: any) => {
+        const response = await fetch(`${API_BASE_URL}/timetable/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(entryData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to update timetable entry');
+        }
+        return data;
+    },
+
+    // Delete entry
+    delete: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/timetable/${id}`, {
+            method: 'DELETE',
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to delete timetable entry');
         }
         return data;
     },

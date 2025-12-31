@@ -7,13 +7,14 @@ const Student = require('../models/Student');
 // @access  Public
 router.get('/', async (req, res) => {
     try {
-        const { class: className, group, status, search } = req.query;
+        const { class: className, group, status, search, sessionRef } = req.query;
 
         // Build query object
         let query = {};
 
         if (className && className !== 'all') {
-            query.class = className;
+            // Support partial class name matching (e.g., "9th" matches "9th Grade - Medical")
+            query.class = { $regex: className, $options: 'i' };
         }
 
         if (group && group !== 'all') {
@@ -25,7 +26,16 @@ router.get('/', async (req, res) => {
         }
 
         if (search) {
-            query.studentName = { $regex: search, $options: 'i' }; // Case-insensitive search
+            query.$or = [
+                { studentName: { $regex: search, $options: 'i' } },
+                { fatherName: { $regex: search, $options: 'i' } },
+                { studentId: { $regex: search, $options: 'i' } },
+            ];
+        }
+
+        // TASK 4: Peshawar Session Filter
+        if (sessionRef && sessionRef !== 'all') {
+            query.sessionRef = sessionRef;
         }
 
         const students = await Student.find(query).sort({ createdAt: -1 });

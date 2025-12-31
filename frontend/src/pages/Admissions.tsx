@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { HeaderBanner } from "@/components/dashboard/HeaderBanner";
 import { Button } from "@/components/ui/button";
@@ -21,44 +21,56 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   AlertCircle,
   Save,
   UserPlus,
   Sparkles,
   Eye,
-  Printer,
   CheckCircle2,
-  Loader2
+  Loader2,
+  DollarSign,
+  Pencil,
+  Lock,
+  Calculator,
+  Package
 } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { studentApi } from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { studentApi, classApi, sessionApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import confetti from "canvas-confetti";
 
-const premedSubjects = [
-  { id: "Biology", label: "Biology" },
-  { id: "Chemistry", label: "Chemistry" },
-  { id: "Physics", label: "Physics" },
-  { id: "English", label: "English" },
-];
-
-const preengSubjects = [
-  { id: "Mathematics", label: "Mathematics" },
-  { id: "Chemistry", label: "Chemistry" },
-  { id: "Physics", label: "Physics" },
-  { id: "English", label: "English" },
-];
+// Type for subject with fee
+interface SubjectWithFee {
+  name: string;
+  fee: number;
+}
 
 const Admissions = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  // Fetch Active Classes and Sessions
+  const { data: classesData } = useQuery({
+    queryKey: ["classes", { status: "active" }],
+    queryFn: () => classApi.getAll({ status: "active" }),
+  });
+
+  const { data: sessionsData } = useQuery({
+    queryKey: ["sessions"],
+    queryFn: () => sessionApi.getAll(), // Fetch ALL sessions (active, upcoming, completed)
+  });
+
+  const classes = classesData?.data || [];
+  const sessions = sessionsData?.data || [];
+
   // Form state
   const [studentName, setStudentName] = useState("");
   const [fatherName, setFatherName] = useState("");
-  const [classValue, setClassValue] = useState("");
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [selectedSessionId, setSelectedSessionId] = useState("");
   const [group, setGroup] = useState("");
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [parentCell, setParentCell] = useState("");
@@ -70,6 +82,9 @@ const Admissions = () => {
   const [totalFee, setTotalFee] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
 
+  // TASK 4: Custom Fee Toggle (Lump Sum mode)
+  const [isCustomFeeMode, setIsCustomFeeMode] = useState(false);
+
   // Modal states
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [successModalOpen, setSuccessModalOpen] = useState(false);
@@ -77,27 +92,107 @@ const Admissions = () => {
 
   // Quick Add form state
   const [quickName, setQuickName] = useState("");
-  const [quickClass, setQuickClass] = useState("");
+  const [quickClassId, setQuickClassId] = useState("");
+  const [quickSessionId, setQuickSessionId] = useState("");
   const [quickParentCell, setQuickParentCell] = useState("");
   const [quickTotalFee, setQuickTotalFee] = useState("");
   const [quickPaidAmount, setQuickPaidAmount] = useState("");
 
-  const availableSubjects =
-    group === "Pre-Medical"
-      ? premedSubjects
-      : group === "Pre-Engineering"
-        ? preengSubjects
-        : [];
+  // TASK 1: Auto-select active or upcoming session for Quick Add
+  useEffect(() => {
+    if (sessions.length > 0 && !quickSessionId) {
+      // Prefer active, then upcoming, then any session
+      const activeSession = sessions.find((s: any) => s.status === 'active');
+      const upcomingSession = sessions.find((s: any) => s.status === 'upcoming');
+      const defaultSession = activeSession || upcomingSession || sessions[0];
 
-  const handleSubjectToggle = (subjectId: string) => {
+      if (defaultSession) {
+        setQuickSessionId(defaultSession._id);
+      }
+    }
+  }, [sessions]);
+
+  // TASK 2: Dynamic fee sync for Quick Add when class changes
+  useEffect(() => {
+    if (quickClassId) {
+      const selectedClass = getQuickSelectedClass();
+      if (selectedClass) {
+        // Calculate total from subjects or use baseFee
+        const subjectTotal = (selectedClass.subjects || []).reduce((sum: number, s: any) => {
+          if (typeof s === 'object' && s.fee) return sum + s.fee;
+          return sum;
+        }, 0);
+        setQuickTotalFee(String(subjectTotal || selectedClass.baseFee || 0));
+      }
+    }
+  }, [quickClassId, classes]);
+
+  // Get selected class
+  const getSelectedClass = () => classes.find((c: any) => c._id === selectedClassId);
+  const getQuickSelectedClass = () => classes.find((c: any) => c._id === quickClassId);
+
+  // TASK 3: Get subjects with fees from selected class
+  const getClassSubjectsWithFees = (): SubjectWithFee[] => {
+    const selectedClass = getSelectedClass();
+    if (!selectedClass || !selectedClass.subjects) return [];
+
+    return selectedClass.subjects.map((s: any) => {
+      if (typeof s === 'string') {
+        return { name: s, fee: selectedClass.baseFee || 0 };
+      }
+      return { name: s.name, fee: s.fee || 0 };
+    });
+  };
+
+  const classSubjects = getClassSubjectsWithFees();
+
+  // Calculate total fee based on selected subjects
+  const calculateSubjectBasedFee = () => {
+    return classSubjects
+      .filter(s => selectedSubjects.includes(s.name))
+      .reduce((sum, s) => sum + (s.fee || 0), 0);
+  };
+
+  // Auto-update fee when subjects change (unless in custom mode)
+  useEffect(() => {
+    if (!isCustomFeeMode && selectedClassId && selectedSubjects.length > 0) {
+      const calculatedFee = calculateSubjectBasedFee();
+      setTotalFee(String(calculatedFee));
+    }
+  }, [selectedSubjects, selectedClassId, isCustomFeeMode]);
+
+  // Reset subjects when class changes
+  useEffect(() => {
+    if (selectedClassId) {
+      setSelectedSubjects([]);
+      setIsCustomFeeMode(false);
+      // Auto-select all subjects if no individual selection
+      const selectedClass = getSelectedClass();
+      if (selectedClass?.subjects?.length > 0) {
+        const subjectNames = selectedClass.subjects.map((s: any) =>
+          typeof s === 'string' ? s : s.name
+        );
+        setSelectedSubjects(subjectNames);
+      }
+    }
+  }, [selectedClassId]);
+
+  // Subject toggle handler
+  const handleSubjectToggle = (subjectName: string) => {
     setSelectedSubjects((prev) =>
-      prev.includes(subjectId)
-        ? prev.filter((id) => id !== subjectId)
-        : [...prev, subjectId]
+      prev.includes(subjectName)
+        ? prev.filter((id) => id !== subjectName)
+        : [...prev, subjectName]
     );
   };
 
-  // Subtle confetti celebration - only sky blue and silver
+  // Get fee for a subject
+  const getSubjectFee = (subjectName: string): number => {
+    const subject = classSubjects.find(s => s.name === subjectName);
+    return subject?.fee || 0;
+  };
+
+  // Subtle confetti celebration
   const triggerConfetti = () => {
     const count = 100;
     const defaults = {
@@ -110,52 +205,24 @@ const Admissions = () => {
         ...defaults,
         ...opts,
         particleCount: Math.floor(count * particleRatio),
-        colors: ['#0ea5e9', '#38bdf8', '#cbd5e1', '#e2e8f0'], // Sky blue + silver
+        colors: ['#0ea5e9', '#38bdf8', '#cbd5e1', '#e2e8f0'],
       });
     }
 
-    fire(0.25, {
-      spread: 26,
-      startVelocity: 55,
-    });
-
-    fire(0.2, {
-      spread: 60,
-    });
-
-    fire(0.35, {
-      spread: 100,
-      decay: 0.91,
-      scalar: 0.8,
-    });
-
-    fire(0.1, {
-      spread: 120,
-      startVelocity: 25,
-      decay: 0.92,
-      scalar: 1.2,
-    });
-
-    fire(0.1, {
-      spread: 120,
-      startVelocity: 45,
-    });
+    fire(0.25, { spread: 26, startVelocity: 55 });
+    fire(0.2, { spread: 60 });
+    fire(0.35, { spread: 100, decay: 0.91, scalar: 0.8 });
+    fire(0.1, { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 });
+    fire(0.1, { spread: 120, startVelocity: 45 });
   };
 
   // React Query Mutation
   const createStudentMutation = useMutation({
     mutationFn: studentApi.create,
     onSuccess: (data) => {
-      // Invalidate students query to refetch
       queryClient.invalidateQueries({ queryKey: ["students"] });
-
-      // Save student data for modal
       setSavedStudent(data.data);
-
-      // Trigger subtle confetti
       triggerConfetti();
-
-      // Show success modal instead of toast
       setSuccessModalOpen(true);
     },
     onError: (error: any) => {
@@ -167,8 +234,10 @@ const Admissions = () => {
   });
 
   const handleSaveAdmission = () => {
+    const selectedClass = getSelectedClass();
+
     // Validation
-    if (!studentName || !fatherName || !classValue || !group || !parentCell) {
+    if (!studentName || !fatherName || !selectedClassId || !group || !parentCell) {
       toast.error("Missing Information", {
         description: "Please fill in all required fields",
         duration: 3000,
@@ -184,30 +253,30 @@ const Admissions = () => {
       return;
     }
 
-    // Prepare student data with explicit type casting
+    // Prepare student data
     const studentData = {
       studentName,
       fatherName,
-      class: classValue,
+      class: selectedClass?.className || "",
       group,
-      subjects: selectedSubjects, // Already an array
+      subjects: selectedSubjects,
       parentCell,
-      studentCell: studentCell || undefined, // Optional field
-      address: address || undefined, // Optional field
+      studentCell: studentCell || undefined,
+      address: address || undefined,
       admissionDate: new Date(admissionDate),
-      totalFee: Number(totalFee), // Explicit Number casting
-      paidAmount: Number(paidAmount) || 0, // Default to 0
+      totalFee: Number(totalFee),
+      paidAmount: Number(paidAmount) || 0,
+      classRef: selectedClassId,
+      sessionRef: selectedSessionId || undefined,
     };
 
     console.log('📤 Sending Student Data to Backend:', studentData);
-
-    // Submit data
     createStudentMutation.mutate(studentData);
   };
 
   // Quick Add submission
   const handleQuickAdd = () => {
-    if (!quickName || !quickClass || !quickParentCell) {
+    if (!quickName || !quickClassId || !quickParentCell) {
       toast.error("Missing Information", {
         description: "Please fill in all required fields for quick add",
         duration: 3000,
@@ -215,11 +284,13 @@ const Admissions = () => {
       return;
     }
 
+    const selectedClass = getQuickSelectedClass();
+
     const quickData = {
       studentName: quickName,
       fatherName: "To be updated",
-      class: quickClass,
-      group: "Pre-Medical", // Default
+      class: selectedClass?.className || "TBD",
+      group: "Pre-Medical",
       subjects: [],
       parentCell: quickParentCell,
       studentCell: undefined,
@@ -227,6 +298,8 @@ const Admissions = () => {
       admissionDate: new Date(),
       totalFee: Number(quickTotalFee) || 0,
       paidAmount: Number(quickPaidAmount) || 0,
+      classRef: quickClassId,
+      sessionRef: quickSessionId || undefined,
     };
 
     createStudentMutation.mutate(quickData);
@@ -234,17 +307,18 @@ const Admissions = () => {
 
     // Reset quick form
     setQuickName("");
-    setQuickClass("");
+    setQuickClassId("");
+    setQuickSessionId("");
     setQuickParentCell("");
     setQuickTotalFee("");
     setQuickPaidAmount("");
   };
 
   const handleCancel = () => {
-    // Reset form
     setStudentName("");
     setFatherName("");
-    setClassValue("");
+    setSelectedClassId("");
+    setSelectedSessionId("");
     setGroup("");
     setSelectedSubjects([]);
     setParentCell("");
@@ -253,7 +327,16 @@ const Admissions = () => {
     setAdmissionDate(new Date().toISOString().split("T")[0]);
     setTotalFee("");
     setPaidAmount("");
+    setIsCustomFeeMode(false);
   };
+
+  // Get balance
+  const balance = totalFee && paidAmount
+    ? (parseFloat(totalFee) - parseFloat(paidAmount)).toString()
+    : totalFee || "0";
+
+  // Calculated fee display
+  const calculatedFee = calculateSubjectBasedFee();
 
   return (
     <DashboardLayout title="Admissions">
@@ -264,6 +347,7 @@ const Admissions = () => {
         <Button
           className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
           onClick={() => setQuickAddOpen(true)}
+          style={{ borderRadius: "0.75rem" }}
         >
           <Sparkles className="mr-2 h-4 w-4" />
           Quick Add
@@ -299,13 +383,39 @@ const Admissions = () => {
                 />
               </div>
 
+              {/* Session Dropdown - Show All Sessions */}
+              <div className="space-y-2">
+                <Label htmlFor="session">Academic Session</Label>
+                <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select session" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    {sessions.length === 0 ? (
+                      <SelectItem value="none" disabled>No sessions available</SelectItem>
+                    ) : (
+                      sessions.map((session: any) => (
+                        <SelectItem key={session._id} value={session._id}>
+                          {session.sessionName}
+                          {session.status === 'active' && (
+                            <span className="ml-2 text-green-600 text-xs">(Active)</span>
+                          )}
+                          {session.status === 'upcoming' && (
+                            <span className="ml-2 text-sky-600 text-xs">(Upcoming)</span>
+                          )}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="group">Group *</Label>
                 <Select
                   value={group}
                   onValueChange={(value) => {
                     setGroup(value);
-                    setSelectedSubjects([]);
                   }}
                 >
                   <SelectTrigger className="bg-background">
@@ -313,61 +423,80 @@ const Admissions = () => {
                   </SelectTrigger>
                   <SelectContent className="bg-popover">
                     <SelectItem value="Pre-Medical">Pre-Medical</SelectItem>
-                    <SelectItem value="Pre-Engineering">
-                      Pre-Engineering
-                    </SelectItem>
+                    <SelectItem value="Pre-Engineering">Pre-Engineering</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="space-y-2">
+              {/* Class Dropdown */}
+              <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="class">Class *</Label>
-                <Select value={classValue} onValueChange={setClassValue}>
+                <Select
+                  value={selectedClassId}
+                  onValueChange={setSelectedClassId}
+                >
                   <SelectTrigger className="bg-background">
                     <SelectValue placeholder="Select class" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover">
-                    <SelectItem value="9th">9th Grade</SelectItem>
-                    <SelectItem value="10th">10th Grade</SelectItem>
-                    <SelectItem value="11th">11th Grade</SelectItem>
-                    <SelectItem value="12th">12th Grade</SelectItem>
-                    <SelectItem value="MDCAT">MDCAT Prep</SelectItem>
-                    <SelectItem value="ECAT">ECAT/ETEA Prep</SelectItem>
+                    {classes.length === 0 ? (
+                      <SelectItem value="none" disabled>No active classes</SelectItem>
+                    ) : (
+                      classes.map((cls: any) => (
+                        <SelectItem key={cls._id} value={cls._id}>
+                          {cls.className} - {cls.section}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Conditional Subjects */}
-              {group && (
+              {/* TASK 3: Subjects with Individual Fees from Database */}
+              {selectedClassId && classSubjects.length > 0 && (
                 <div className="sm:col-span-2 space-y-3">
-                  <Label>Subjects</Label>
-                  <div className="flex flex-wrap gap-4 rounded-lg border border-border bg-secondary p-4">
-                    {availableSubjects.map((subject) => (
-                      <div key={subject.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={subject.id}
-                          checked={selectedSubjects.includes(subject.id)}
-                          onCheckedChange={() => handleSubjectToggle(subject.id)}
-                        />
-                        <label
-                          htmlFor={subject.id}
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground"
-                        >
-                          {subject.label}
-                        </label>
-                      </div>
-                    ))}
+                  <div className="flex items-center justify-between">
+                    <Label>Select Subjects</Label>
+                    {selectedSubjects.length > 0 && !isCustomFeeMode && (
+                      <span className="text-sm font-semibold text-green-600 flex items-center gap-1">
+                        <Calculator className="h-3.5 w-3.5" />
+                        Total: {calculatedFee.toLocaleString()} PKR
+                      </span>
+                    )}
                   </div>
-                  {group === "Pre-Medical" && (
-                    <p className="text-xs text-muted-foreground">
-                      Pre-Medical group includes Biology instead of Mathematics
-                    </p>
-                  )}
-                  {group === "Pre-Engineering" && (
-                    <p className="text-xs text-muted-foreground">
-                      Pre-Engineering group includes Mathematics instead of Biology
-                    </p>
-                  )}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {classSubjects.map((subject) => {
+                      const isSelected = selectedSubjects.includes(subject.name);
+
+                      return (
+                        <div
+                          key={subject.name}
+                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${isSelected
+                            ? "border-sky-500 bg-sky-50"
+                            : "border-border hover:border-sky-300"
+                            }`}
+                          onClick={() => handleSubjectToggle(subject.name)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => handleSubjectToggle(subject.name)}
+                            />
+                            <span className={`font-medium ${isSelected ? 'text-sky-700' : 'text-foreground'}`}>
+                              {subject.name}
+                            </span>
+                          </div>
+                          <span className={`text-sm font-semibold ${isSelected ? 'text-green-600' : 'text-muted-foreground'
+                            }`}>
+                            {subject.fee.toLocaleString()} PKR
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Fee is calculated based on selected subjects. Select all subjects the student will study.
+                  </p>
                 </div>
               )}
 
@@ -423,15 +552,83 @@ const Admissions = () => {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="totalFee">Total Fee (PKR) *</Label>
-                <Input
-                  id="totalFee"
-                  type="number"
-                  placeholder="0"
-                  value={totalFee}
-                  onChange={(e) => setTotalFee(e.target.value)}
+              {/* TASK 3 & 4: Custom Fee Toggle with Amber Warning */}
+              <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/50">
+                <div className="flex items-center gap-2">
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium">Custom Fee (Lump Sum)</p>
+                    <p className="text-xs text-muted-foreground">Override calculated fee</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={isCustomFeeMode}
+                  onCheckedChange={setIsCustomFeeMode}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="totalFee">Total Fee (PKR) *</Label>
+                  {isCustomFeeMode ? (
+                    <span className="text-xs text-amber-600 flex items-center gap-1 font-medium">
+                      <AlertCircle className="h-3 w-3" />
+                      Manual Override Active
+                    </span>
+                  ) : selectedSubjects.length > 0 ? (
+                    <span className="text-xs text-sky-600 flex items-center gap-1">
+                      <Calculator className="h-3 w-3" />
+                      Auto-calculated
+                    </span>
+                  ) : null}
+                </div>
+                <div className="relative">
+                  <Input
+                    id="totalFee"
+                    type="number"
+                    placeholder="0"
+                    value={totalFee}
+                    onChange={(e) => setTotalFee(e.target.value)}
+                    readOnly={!isCustomFeeMode && selectedSubjects.length > 0}
+                    className={`${isCustomFeeMode
+                      ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-200'
+                      : !isCustomFeeMode && selectedSubjects.length > 0
+                        ? 'border-sky-300 bg-sky-50 cursor-not-allowed'
+                        : ''
+                      }`}
+                  />
+                  {!isCustomFeeMode && selectedSubjects.length > 0 && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <Lock className="h-4 w-4 text-sky-500" />
+                    </div>
+                  )}
+                  {isCustomFeeMode && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <Pencil className="h-4 w-4 text-amber-500" />
+                    </div>
+                  )}
+                </div>
+                {/* Fee Breakdown */}
+                {selectedSubjects.length > 0 && (
+                  <div className="mt-2 p-2 rounded bg-slate-50 border border-slate-100">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Fee Breakdown:</p>
+                    <div className="space-y-0.5">
+                      {classSubjects
+                        .filter(s => selectedSubjects.includes(s.name))
+                        .map(s => (
+                          <div key={s.name} className="flex justify-between text-xs">
+                            <span className="text-slate-600">{s.name}</span>
+                            <span className="font-medium text-slate-700">{s.fee.toLocaleString()} PKR</span>
+                          </div>
+                        ))
+                      }
+                      <div className="flex justify-between text-xs font-bold pt-1 border-t border-slate-200 mt-1">
+                        <span className="text-foreground">Total</span>
+                        <span className="text-green-600">{calculatedFee.toLocaleString()} PKR</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -451,11 +648,7 @@ const Admissions = () => {
                   id="balance"
                   type="number"
                   placeholder="0"
-                  value={
-                    totalFee && paidAmount
-                      ? (parseFloat(totalFee) - parseFloat(paidAmount)).toString()
-                      : "0"
-                  }
+                  value={balance}
                   disabled
                   className="bg-secondary"
                 />
@@ -490,6 +683,7 @@ const Admissions = () => {
               className="flex-1"
               onClick={handleSaveAdmission}
               disabled={createStudentMutation.isPending}
+              style={{ borderRadius: "0.75rem" }}
             >
               {createStudentMutation.isPending ? (
                 <>
@@ -507,11 +701,10 @@ const Admissions = () => {
         </div>
       </div>
 
-      {/* Quick Add Modal - Surgical Strike UI */}
+      {/* Quick Add Modal */}
       <Dialog open={quickAddOpen} onOpenChange={setQuickAddOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            {/* Compact Icon in Sky Blue Circle */}
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-sky-100">
               <UserPlus className="h-6 w-6 text-sky-600" />
             </div>
@@ -533,49 +726,102 @@ const Admissions = () => {
                 className="h-9"
               />
             </div>
+
+            {/* TASK 1: Session with auto-select (active or upcoming) */}
             <div className="space-y-1.5">
-              <Label htmlFor="quick-class" className="text-sm">Class *</Label>
-              <Select value={quickClass} onValueChange={setQuickClass}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Select class" />
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Session</Label>
+                {sessions.find((s: any) => s._id === quickSessionId) && (() => {
+                  const selected = sessions.find((s: any) => s._id === quickSessionId);
+                  if (selected?.status === 'active') {
+                    return (
+                      <span className="text-xs text-green-600 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Active
+                      </span>
+                    );
+                  } else if (selected?.status === 'upcoming') {
+                    return (
+                      <span className="text-xs text-sky-600 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Upcoming
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+              <Select value={quickSessionId} onValueChange={setQuickSessionId}>
+                <SelectTrigger className="h-9 bg-background">
+                  <SelectValue placeholder="Select session" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="9th">9th Grade</SelectItem>
-                  <SelectItem value="10th">10th Grade</SelectItem>
-                  <SelectItem value="11th">11th Grade</SelectItem>
-                  <SelectItem value="12th">12th Grade</SelectItem>
-                  <SelectItem value="MDCAT">MDCAT Prep</SelectItem>
-                  <SelectItem value="ECAT">ECAT Prep</SelectItem>
+                  {sessions.length === 0 ? (
+                    <SelectItem value="none" disabled>No sessions available</SelectItem>
+                  ) : (
+                    sessions.map((session: any) => (
+                      <SelectItem key={session._id} value={session._id}>
+                        {session.sessionName}
+                        {session.status === 'active' && (
+                          <span className="ml-2 text-green-600 text-xs">(Current)</span>
+                        )}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
+
+            {/* TASK 2: Class with fee sync */}
             <div className="space-y-1.5">
-              <Label htmlFor="quick-parent-cell" className="text-sm">Parent Cell No. *</Label>
+              <Label htmlFor="quick-class" className="text-sm">Class *</Label>
+              <Select value={quickClassId} onValueChange={setQuickClassId}>
+                <SelectTrigger className="h-9 bg-background">
+                  <SelectValue placeholder="Select class" />
+                </SelectTrigger>
+                <SelectContent>
+                  {classes.map((cls: any) => (
+                    <SelectItem key={cls._id} value={cls._id}>
+                      {cls.className} - {cls.section}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="quick-parent" className="text-sm">Parent Cell *</Label>
               <Input
-                id="quick-parent-cell"
+                id="quick-parent"
                 placeholder="03XX-XXXXXXX"
                 value={quickParentCell}
                 onChange={(e) => setQuickParentCell(e.target.value)}
                 className="h-9"
               />
             </div>
-            {/* Financial Fields - 2 Column Grid */}
-            <div className="grid grid-cols-2 gap-2">
+
+            {/* Fee fields with sync indicator */}
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="quick-total-fee" className="text-sm">Monthly Fee</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm">Total Fee</Label>
+                  {quickClassId && (
+                    <span className="text-xs text-sky-600">
+                      Auto-filled
+                    </span>
+                  )}
+                </div>
                 <Input
-                  id="quick-total-fee"
                   type="number"
                   placeholder="0"
                   value={quickTotalFee}
                   onChange={(e) => setQuickTotalFee(e.target.value)}
-                  className="h-9"
+                  className="h-9 bg-background"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="quick-paid-amount" className="text-sm">Advance Payment</Label>
+                <Label className="text-sm">Paid Amount</Label>
                 <Input
-                  id="quick-paid-amount"
                   type="number"
                   placeholder="0"
                   value={quickPaidAmount}
@@ -585,109 +831,98 @@ const Admissions = () => {
               </div>
             </div>
           </div>
-          <DialogFooter className="gap-2">
+          <DialogFooter className="flex gap-2">
             <Button
               variant="outline"
               onClick={() => setQuickAddOpen(false)}
-              disabled={createStudentMutation.isPending}
-              className="h-9"
+              className="flex-1"
             >
               Cancel
             </Button>
             <Button
               onClick={handleQuickAdd}
               disabled={createStudentMutation.isPending}
-              className="h-9"
+              className="flex-1 bg-sky-600 hover:bg-sky-700"
+              style={{ borderRadius: "0.75rem" }}
             >
               {createStudentMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
+                  Adding...
                 </>
               ) : (
-                <>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Quick Add
-                </>
+                "Enroll Student"
               )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Success Modal - Digital Receipt Style */}
+      {/* Success Modal */}
       <Dialog open={successModalOpen} onOpenChange={setSuccessModalOpen}>
-        <DialogContent className="sm:max-w-[340px] p-0 gap-0">
-          {/* Compact Header with Check Icon */}
-          <div className="bg-gradient-to-br from-sky-50 to-white px-6 pt-6 pb-4 text-center border-b border-sky-100">
-            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-md ring-4 ring-sky-50">
-              <CheckCircle2 className="h-7 w-7 text-sky-600" />
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+              <CheckCircle2 className="h-8 w-8 text-green-600" />
             </div>
-            <h3 className="text-lg font-bold text-foreground">Admission Successful</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Student enrolled successfully</p>
-          </div>
+            <DialogTitle className="text-center text-xl font-semibold">
+              Admission Successful!
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              {savedStudent?.studentName} has been enrolled successfully.
+            </DialogDescription>
+          </DialogHeader>
 
-          {/* Student ID Badge - Blue Pill */}
-          <div className="px-6 py-4 bg-white">
-            <div className="flex items-center justify-center">
-              <span className="inline-flex items-center px-4 py-2 rounded-full bg-sky-600 text-white font-mono text-base font-bold tracking-wide shadow-md">
-                {savedStudent?.studentId}
-              </span>
+          {savedStudent && (
+            <div className="my-4 rounded-lg bg-secondary p-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Student ID</p>
+                  <p className="font-mono font-semibold text-sky-600">{savedStudent.studentId}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Class</p>
+                  <p className="font-semibold">{savedStudent.class}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Total Fee</p>
+                  <p className="font-semibold">{savedStudent.totalFee?.toLocaleString()} PKR</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Fee Status</p>
+                  <p className={`font-semibold capitalize ${savedStudent.feeStatus === 'paid' ? 'text-green-600' :
+                    savedStudent.feeStatus === 'partial' ? 'text-yellow-600' : 'text-amber-600'
+                    }`}>
+                    {savedStudent.feeStatus}
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Compact Details */}
-          <div className="px-6 pb-4 space-y-2 bg-white">
-            <div className="flex justify-between items-center text-sm py-1.5">
-              <span className="text-muted-foreground">Student</span>
-              <span className="font-semibold">{savedStudent?.studentName}</span>
-            </div>
-            <div className="flex justify-between items-center text-sm py-1.5">
-              <span className="text-muted-foreground">Father</span>
-              <span className={savedStudent?.fatherName === "To be updated" ? "italic text-slate-400 text-xs" : "font-semibold"}>
-                {savedStudent?.fatherName}
-              </span>
-            </div>
-            <div className="flex justify-between items-center text-sm py-1.5">
-              <span className="text-muted-foreground">Class</span>
-              <span className="font-semibold">{savedStudent?.class}</span>
-            </div>
-            <div className="flex justify-between items-center text-sm py-1.5">
-              <span className="text-muted-foreground">Fee Status</span>
-              <span className={`
-                px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider
-                ${savedStudent?.feeStatus === 'paid' ? 'bg-green-100 text-green-700' : ''}
-                ${savedStudent?.feeStatus === 'partial' ? 'bg-yellow-100 text-yellow-700' : ''}
-                ${savedStudent?.feeStatus === 'pending' ? 'bg-amber-50 text-amber-600' : ''}
-              `}>
-                {savedStudent?.feeStatus}
-              </span>
-            </div>
-          </div>
-
-          {/* Compact Footer */}
-          <div className="flex gap-2 px-6 py-4 bg-slate-50 border-t border-slate-100">
+          <DialogFooter className="flex gap-2 sm:justify-center">
             <Button
-              variant="ghost"
-              size="sm"
-              className="flex-1 h-9"
-              onClick={() => window.print()}
-            >
-              <Printer className="mr-1.5 h-3.5 w-3.5" />
-              <span className="text-xs">Print</span>
-            </Button>
-            <Button
-              size="sm"
-              className="flex-1 h-9 bg-sky-600 hover:bg-sky-700"
+              variant="outline"
               onClick={() => {
                 setSuccessModalOpen(false);
                 navigate("/students");
               }}
             >
-              <Eye className="mr-1.5 h-3.5 w-3.5" />
-              <span className="text-xs">Dashboard</span>
+              <Eye className="mr-2 h-4 w-4" />
+              View Students
             </Button>
-          </div>
+            <Button
+              onClick={() => {
+                setSuccessModalOpen(false);
+                handleCancel();
+              }}
+              className="bg-sky-600 hover:bg-sky-700"
+              style={{ borderRadius: "0.75rem" }}
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              New Admission
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </DashboardLayout>

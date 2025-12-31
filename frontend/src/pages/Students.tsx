@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Eye, Edit, Trash2, UserPlus, Search, Download, Loader2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { studentApi } from "@/lib/api";
+import { studentApi, sessionApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 // Import CRUD Modals
@@ -37,6 +37,13 @@ const getInitials = (name: string): string => {
   return name.substring(0, 2).toUpperCase();
 };
 
+// TASK 3: Helper to get subject name from string or object
+const getSubjectName = (subject: any): string => {
+  if (typeof subject === 'string') return subject;
+  if (typeof subject === 'object' && subject.name) return subject.name;
+  return '';
+};
+
 const Students = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -46,20 +53,32 @@ const Students = () => {
   const [classFilter, setClassFilter] = useState("all");
   const [groupFilter, setGroupFilter] = useState("all");
 
-  // Modal states - Mirroring Teachers pattern
+  // TASK 4: Peshawar Session Filter
+  const [sessionFilter, setSessionFilter] = useState("all");
+
+  // Modal states
   const [isViewEditModalOpen, setIsViewEditModalOpen] = useState(false);
   const [viewEditMode, setViewEditMode] = useState<"view" | "edit">("view");
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
 
-  // Fetch students with React Query
+  // TASK 4: Fetch all sessions for filter dropdown
+  const { data: sessionsData } = useQuery({
+    queryKey: ["sessions"],
+    queryFn: () => sessionApi.getAll(),
+  });
+
+  const sessions = sessionsData?.data || [];
+
+  // Fetch students with React Query - include session filter
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["students", { class: classFilter, group: groupFilter, search: searchTerm }],
+    queryKey: ["students", { class: classFilter, group: groupFilter, search: searchTerm, session: sessionFilter }],
     queryFn: () =>
       studentApi.getAll({
         class: classFilter !== "all" ? classFilter : undefined,
         group: groupFilter !== "all" ? groupFilter : undefined,
         search: searchTerm || undefined,
+        sessionRef: sessionFilter !== "all" ? sessionFilter : undefined,
       }),
   });
 
@@ -85,7 +104,7 @@ const Students = () => {
     },
   });
 
-  // Handlers - Mirroring Teachers pattern
+  // Handlers
   const handleView = (student: any) => {
     setSelectedStudent(student);
     setViewEditMode("view");
@@ -124,7 +143,7 @@ const Students = () => {
         </Button>
       </HeaderBanner>
 
-      {/* Filters */}
+      {/* Filters - All in one row */}
       <div className="mt-6 rounded-xl border border-border bg-card p-4 card-shadow">
         <div className="flex flex-wrap items-center gap-4">
           <div className="relative flex-1 min-w-[200px]">
@@ -137,9 +156,24 @@ const Students = () => {
             />
           </div>
 
+          {/* Session Filter - Integrated */}
+          <Select value={sessionFilter} onValueChange={setSessionFilter}>
+            <SelectTrigger className="w-[180px] bg-background">
+              <SelectValue placeholder="All Sessions" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="all">All Sessions</SelectItem>
+              {sessions.map((session: any) => (
+                <SelectItem key={session._id} value={session._id}>
+                  {session.sessionName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select value={classFilter} onValueChange={setClassFilter}>
             <SelectTrigger className="w-[150px] bg-background">
-              <SelectValue placeholder="Filter by Class" />
+              <SelectValue placeholder="All Classes" />
             </SelectTrigger>
             <SelectContent className="bg-popover">
               <SelectItem value="all">All Classes</SelectItem>
@@ -154,7 +188,7 @@ const Students = () => {
 
           <Select value={groupFilter} onValueChange={setGroupFilter}>
             <SelectTrigger className="w-[170px] bg-background">
-              <SelectValue placeholder="Filter by Group" />
+              <SelectValue placeholder="All Groups" />
             </SelectTrigger>
             <SelectContent className="bg-popover">
               <SelectItem value="all">All Groups</SelectItem>
@@ -191,7 +225,9 @@ const Students = () => {
               No students found
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-              Add your first student to get started
+              {sessionFilter !== "all"
+                ? "No students in this session. Try selecting 'All Sessions'."
+                : "Add your first student to get started"}
             </p>
             <Button
               className="mt-4"
@@ -218,6 +254,7 @@ const Students = () => {
             <TableBody>
               {students.map((student: any) => {
                 const initials = getInitials(student.studentName || "NA");
+                const subjects = student.subjects || [];
 
                 return (
                   <TableRow key={student._id} className="hover:bg-secondary/50">
@@ -226,7 +263,6 @@ const Students = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        {/* Sky Blue Avatar with Perfect Centering */}
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white font-bold text-sm shadow-md">
                           <span className="flex items-center justify-center">{initials}</span>
                         </div>
@@ -234,7 +270,6 @@ const Students = () => {
                           <p className="font-semibold text-foreground">
                             {student.studentName}
                           </p>
-                          {/* Draft Data Styling - Visual Cue for Incomplete Entries */}
                           {student.fatherName === "To be updated" ? (
                             <p className="text-[11px] italic text-slate-400">
                               {student.fatherName}
@@ -252,21 +287,21 @@ const Students = () => {
                       <span className="text-sm text-muted-foreground">{student.group}</span>
                     </TableCell>
                     <TableCell>
-                      {/* Enterprise Subject Pills */}
+                      {/* TASK 3: Enterprise Subject Pills - Handles both string and object format */}
                       <div className="flex flex-wrap gap-1.5">
-                        {student.subjects?.length > 0 ? (
+                        {subjects.length > 0 ? (
                           <>
-                            {student.subjects.slice(0, 2).map((subject: string) => (
+                            {subjects.slice(0, 2).map((subject: any, idx: number) => (
                               <span
-                                key={subject}
+                                key={idx}
                                 className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 border border-slate-200 text-slate-700"
                               >
-                                {subject}
+                                {getSubjectName(subject)}
                               </span>
                             ))}
-                            {student.subjects.length > 2 && (
+                            {subjects.length > 2 && (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 border border-sky-200 text-sky-700">
-                                +{student.subjects.length - 2}
+                                +{subjects.length - 2}
                               </span>
                             )}
                           </>
@@ -276,7 +311,6 @@ const Students = () => {
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      {/* Status Badge with Refined Glow */}
                       <div
                         className="inline-flex items-center justify-center"
                         style={{
@@ -289,7 +323,6 @@ const Students = () => {
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      {/* Fee Status Badge - Locked to Backend */}
                       <div
                         className="inline-flex items-center justify-center"
                         style={{
@@ -298,7 +331,7 @@ const Students = () => {
                               ? 'drop-shadow(0 0 8px rgba(34, 197, 94, 0.3))'
                               : student.feeStatus === 'partial'
                                 ? 'drop-shadow(0 0 8px rgba(234, 179, 8, 0.3))'
-                                : 'drop-shadow(0 0 8px rgba(217, 119, 6, 0.3))' // Amber glow
+                                : 'drop-shadow(0 0 8px rgba(217, 119, 6, 0.3))'
                         }}
                       >
                         <StatusBadge status={student.feeStatus} />
@@ -344,7 +377,7 @@ const Students = () => {
         )}
       </div>
 
-      {/* CRUD Modals - Mirroring Teachers Pattern */}
+      {/* CRUD Modals */}
       <ViewEditStudentModal
         open={isViewEditModalOpen}
         onOpenChange={setIsViewEditModalOpen}
