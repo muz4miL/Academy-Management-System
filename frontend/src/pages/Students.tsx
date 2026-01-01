@@ -177,12 +177,12 @@ const Students = () => {
             </SelectTrigger>
             <SelectContent className="bg-popover">
               <SelectItem value="all">All Classes</SelectItem>
-              <SelectItem value="9th">9th Grade</SelectItem>
-              <SelectItem value="10th">10th Grade</SelectItem>
-              <SelectItem value="11th">11th Grade</SelectItem>
-              <SelectItem value="12th">12th Grade</SelectItem>
-              <SelectItem value="MDCAT">MDCAT</SelectItem>
-              <SelectItem value="ECAT">ECAT</SelectItem>
+              <SelectItem value="9th Grade">9th Grade</SelectItem>
+              <SelectItem value="10th Grade">10th Grade</SelectItem>
+              <SelectItem value="11th Grade">11th Grade</SelectItem>
+              <SelectItem value="12th Grade">12th Grade</SelectItem>
+              <SelectItem value="MDCAT Prep">MDCAT Prep</SelectItem>
+              <SelectItem value="ECAT Prep">ECAT Prep</SelectItem>
             </SelectContent>
           </Select>
 

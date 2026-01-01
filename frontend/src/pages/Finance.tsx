@@ -1,9 +1,17 @@
+import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { HeaderBanner } from "@/components/dashboard/HeaderBanner";
 import { KPICard } from "@/components/dashboard/KPICard";
-import { StatusBadge } from "@/components/common/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -16,220 +24,452 @@ import {
   DollarSign,
   TrendingUp,
   AlertCircle,
-  Receipt,
-  Download,
-  Printer,
   GraduationCap,
+  Wallet,
+  Users,
+  Loader2,
+  Plus,
+  Trash2,
+  TrendingDown,
 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
-const monthlyData = [
-  { month: "Jan", collected: 520000, pending: 80000 },
-  { month: "Feb", collected: 480000, pending: 120000 },
-  { month: "Mar", collected: 600000, pending: 60000 },
-  { month: "Apr", collected: 550000, pending: 90000 },
-  { month: "May", collected: 580000, pending: 70000 },
-  { month: "Jun", collected: 620000, pending: 50000 },
-];
-
-const feeRecords = [
-  { id: "FEE-001", student: "Ahmed Ali", class: "11th", totalFee: 40000, paid: 40000, balance: 0, status: "paid" as const },
-  { id: "FEE-002", student: "Sara Khan", class: "12th", totalFee: 40000, paid: 25000, balance: 15000, status: "partial" as const },
-  { id: "FEE-003", student: "Hassan Raza", class: "MDCAT", totalFee: 60000, paid: 0, balance: 60000, status: "pending" as const },
-  { id: "FEE-004", student: "Fatima Noor", class: "10th", totalFee: 30000, paid: 30000, balance: 0, status: "paid" as const },
-  { id: "FEE-005", student: "Usman Shah", class: "11th", totalFee: 35000, paid: 20000, balance: 15000, status: "partial" as const },
-];
+// API Base URL
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 const Finance = () => {
-  const totalIncome = 600000;
-  const totalExpense = 380000;
-  const netBalance = totalIncome - totalExpense;
-  const teacherShare = totalIncome * 0.7;
-  const academyShare = totalIncome * 0.3;
+  const queryClient = useQueryClient();
+
+  // Expense form state
+  const [expenseTitle, setExpenseTitle] = useState("");
+  const [expenseCategory, setExpenseCategory] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
+
+  // Fetch real-time finance stats
+  const { data: financeData, isLoading: statsLoading } = useQuery({
+    queryKey: ['finance', 'stats'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/api/finance/stats/overview`);
+      if (!response.ok) throw new Error('Failed to fetch finance stats');
+      const result = await response.json();
+      return result.data;
+    },
+    refetchInterval: 30000,
+  });
+
+  // Fetch expenses
+  const { data: expensesData, isLoading: expensesLoading } = useQuery({
+    queryKey: ['expenses'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/api/expenses?limit=10`);
+      if (!response.ok) throw new Error('Failed to fetch expenses');
+      const result = await response.json();
+      return result.data;
+    },
+  });
+
+  // Create expense mutation
+  const createExpenseMutation = useMutation({
+    mutationFn: async (expenseData: any) => {
+      const response = await fetch(`${API_BASE_URL}/api/expenses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(expenseData),
+      });
+      if (!response.ok) throw new Error('Failed to create expense');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['finance'] });
+      toast.success('Expense added successfully');
+      // Reset form
+      setExpenseTitle("");
+      setExpenseCategory("");
+      setExpenseAmount("");
+    },
+    onError: () => {
+      toast.error('Failed to add expense');
+    },
+  });
+
+  // Delete expense mutation
+  const deleteExpenseMutation = useMutation({
+    mutationFn: async (expenseId: string) => {
+      const response = await fetch(`${API_BASE_URL}/api/expenses/${expenseId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete expense');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['finance'] });
+      toast.success('Expense deleted successfully');
+    },
+    onError: () => {
+      toast.error('Failed to delete expense');
+    },
+  });
+
+  const handleAddExpense = () => {
+    if (!expenseTitle || !expenseCategory || !expenseAmount) {
+      toast.error('Please fill all expense fields');
+      return;
+    }
+
+    createExpenseMutation.mutate({
+      title: expenseTitle,
+      category: expenseCategory,
+      amount: parseFloat(expenseAmount),
+    });
+  };
+
+  if (statsLoading) {
+    return (
+      <DashboardLayout title="Finance">
+        <div className="flex items-center justify-center h-96">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  const {
+    totalIncome = 0,
+    totalExpected = 0,
+    totalPending = 0,
+    pendingStudentsCount = 0,
+    totalTeacherLiabilities = 0,
+    teacherPayroll = [],
+    academyShare = 0,
+    totalExpenses = 0,
+    netProfit = 0,
+    collectionRate = 0,
+  } = financeData || {};
+
+  const expenses = expensesData || [];
+
+  // TASK 4: Triple-Split Financial Chart Data
+  const chartData = [
+    { name: 'Net Profit', value: Math.max(0, netProfit), color: '#3b82f6' }, // Blue
+    { name: 'Teacher Payouts', value: totalTeacherLiabilities, color: '#10b981' }, // Green
+    { name: 'Expenses', value: totalExpenses, color: '#ef4444' }, // Red
+  ];
+
+  const COLORS = ['#3b82f6', '#10b981', '#ef4444'];
 
   return (
     <DashboardLayout title="Finance">
       <HeaderBanner
         title="Finance Management"
-        subtitle="Track income, expenses, and financial reports"
+        subtitle="Real-time financial analytics and expense tracking"
       />
 
       {/* KPI Cards */}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard
-          title="Total Income"
+          title="Total Collected"
           value={`PKR ${(totalIncome / 1000).toFixed(0)}K`}
+          subtitle={`${collectionRate}% collection rate`}
           icon={TrendingUp}
           variant="success"
-          trend={{ value: 12, isPositive: true }}
+          trend={{ value: collectionRate, isPositive: collectionRate > 70 }}
         />
         <KPICard
-          title="Total Expense"
-          value={`PKR ${(totalExpense / 1000).toFixed(0)}K`}
-          icon={DollarSign}
+          title="Teacher Liabilities"
+          value={`PKR ${(totalTeacherLiabilities / 1000).toFixed(0)}K`}
+          subtitle={`${teacherPayroll.length} active teachers`}
+          icon={GraduationCap}
           variant="warning"
         />
         <KPICard
-          title="Net Balance"
-          value={`PKR ${(netBalance / 1000).toFixed(0)}K`}
-          icon={DollarSign}
-          variant="primary"
+          title="Total Expenses"
+          value={`PKR ${(totalExpenses / 1000).toFixed(0)}K`}
+          subtitle="Operational costs"
+          icon={TrendingDown}
+          variant="danger"
         />
         <KPICard
-          title="Pending Fees"
-          value="PKR 180K"
-          subtitle="32 students"
-          icon={AlertCircle}
-          variant="warning"
+          title="Net Profit"
+          value={`PKR ${(netProfit / 1000).toFixed(0)}K`}
+          subtitle="After all costs"
+          icon={Wallet}
+          variant={netProfit > 0 ? "primary" : "danger"}
         />
       </div>
 
-      {/* Revenue Split & Chart */}
+      {/* Charts & Revenue Breakdown */}
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        {/* Fee Collection Chart */}
+        {/* TASK 4: Triple-Split Pie Chart */}
         <div className="rounded-xl border border-border bg-card p-6 card-shadow">
           <h3 className="mb-4 text-lg font-semibold text-foreground">
-            Monthly Fee Collection
+            Financial Distribution
           </h3>
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" />
-              <YAxis stroke="hsl(var(--muted-foreground))" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "8px",
-                }}
-                formatter={(value: number) => [`PKR ${value.toLocaleString()}`, ""]}
-              />
-              <Bar dataKey="collected" name="Collected" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="pending" name="Pending" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
-            </BarChart>
+            <PieChart>
+              <Pie
+                data={chartData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip formatter={(value: number) => `PKR ${value.toLocaleString()}`} />
+              <Legend />
+            </PieChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Teacher vs Academy Split */}
+        {/* Revenue Breakdown */}
         <div className="rounded-xl border border-border bg-card p-6 card-shadow">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-foreground">
-              Revenue Breakdown (70/30 Split)
-            </h3>
-          </div>
+          <h3 className="mb-4 text-lg font-semibold text-foreground">
+            Revenue Breakdown
+          </h3>
 
           <div className="mb-6 text-center">
-            <p className="text-sm text-muted-foreground">Total Revenue This Month</p>
+            <p className="text-sm text-muted-foreground">Total Revenue Collected</p>
             <p className="text-3xl font-bold text-foreground">
               PKR {totalIncome.toLocaleString()}
             </p>
           </div>
 
-          <div className="space-y-4">
-            <div className="rounded-lg border border-success/20 bg-success-light p-4">
+          <div className="space-y-3">
+            <div className="rounded-lg border border-success/20 bg-success-light p-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <GraduationCap className="h-6 w-6 text-success" />
-                  <div>
-                    <p className="text-sm font-medium text-success">Teacher Payouts</p>
-                    <p className="text-sm text-success/70">70% of total revenue</p>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <GraduationCap className="h-5 w-5 text-success" />
+                  <span className="text-sm font-medium text-success">Teacher Payouts</span>
                 </div>
-                <p className="text-xl font-bold text-success">
-                  PKR {teacherShare.toLocaleString()}
+                <p className="text-lg font-bold text-success">
+                  PKR {totalTeacherLiabilities.toLocaleString()}
                 </p>
               </div>
             </div>
 
-            <div className="rounded-lg border border-primary/20 bg-primary-light p-4">
+            <div className="rounded-lg border border-destructive/20 bg-red-50 p-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <DollarSign className="h-6 w-6 text-primary" />
-                  <div>
-                    <p className="text-sm font-medium text-primary">Academy Share</p>
-                    <p className="text-sm text-primary/70">30% of total revenue</p>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <TrendingDown className="h-5 w-5 text-destructive" />
+                  <span className="text-sm font-medium text-destructive">Expenses</span>
                 </div>
-                <p className="text-xl font-bold text-primary">
-                  PKR {academyShare.toLocaleString()}
+                <p className="text-lg font-bold text-destructive">
+                  PKR {totalExpenses.toLocaleString()}
                 </p>
               </div>
             </div>
-          </div>
 
-          <div className="mt-4 flex items-center gap-2">
-            <div className="h-3 flex-1 overflow-hidden rounded-full bg-secondary">
-              <div className="h-full w-[70%] bg-success" />
+            <div className="rounded-lg border border-primary/20 bg-primary-light p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Wallet className="h-5 w-5 text-primary" />
+                  <span className="text-sm font-medium text-primary">Net Profit</span>
+                </div>
+                <p className="text-lg font-bold text-primary">
+                  PKR {netProfit.toLocaleString()}
+                </p>
+              </div>
             </div>
-            <span className="text-xs text-muted-foreground">70%</span>
-            <div className="h-3 flex-[0.43] overflow-hidden rounded-full bg-secondary">
-              <div className="h-full w-full bg-primary" />
-            </div>
-            <span className="text-xs text-muted-foreground">30%</span>
           </div>
         </div>
       </div>
 
-      {/* Fee Records Table */}
+      {/* Teacher Payroll Table */}
       <div className="mt-6 rounded-xl border border-border bg-card card-shadow overflow-hidden">
         <div className="flex items-center justify-between border-b border-border p-4">
-          <h3 className="text-lg font-semibold text-foreground">Fee Records</h3>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <Download className="mr-2 h-4 w-4" />
-              Export
-            </Button>
-            <Button size="sm">
-              <Receipt className="mr-2 h-4 w-4" />
-              Generate Receipt
-            </Button>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">Teacher Payroll</h3>
+            <p className="text-sm text-muted-foreground">Earnings based on collected fees</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium text-foreground">{teacherPayroll.length} Teachers</span>
           </div>
         </div>
         <Table>
           <TableHeader>
             <TableRow className="bg-secondary hover:bg-secondary">
-              <TableHead className="font-semibold">Receipt ID</TableHead>
-              <TableHead className="font-semibold">Student</TableHead>
-              <TableHead className="font-semibold">Class</TableHead>
-              <TableHead className="font-semibold text-right">Total Fee</TableHead>
-              <TableHead className="font-semibold text-right">Paid</TableHead>
-              <TableHead className="font-semibold text-right">Balance</TableHead>
-              <TableHead className="font-semibold">Status</TableHead>
+              <TableHead className="font-semibold">Teacher Name</TableHead>
+              <TableHead className="font-semibold">Subject</TableHead>
+              <TableHead className="font-semibold">Model</TableHead>
+              <TableHead className="font-semibold text-right">Revenue</TableHead>
+              <TableHead className="font-semibold text-right">Earned</TableHead>
+              <TableHead className="font-semibold text-center">Classes</TableHead>
               <TableHead className="font-semibold text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {feeRecords.map((record) => (
-              <TableRow key={record.id} className="hover:bg-secondary/50">
-                <TableCell className="font-medium">{record.id}</TableCell>
-                <TableCell>{record.student}</TableCell>
-                <TableCell>{record.class}</TableCell>
-                <TableCell className="text-right">
-                  PKR {record.totalFee.toLocaleString()}
-                </TableCell>
-                <TableCell className="text-right text-success">
-                  PKR {record.paid.toLocaleString()}
-                </TableCell>
-                <TableCell className="text-right text-destructive">
-                  PKR {record.balance.toLocaleString()}
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={record.status} />
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <Printer className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <Receipt className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </div>
+            {teacherPayroll.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  No active teachers found
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              teacherPayroll.map((teacher: any) => (
+                <TableRow key={teacher.teacherId} className="hover:bg-secondary/50">
+                  <TableCell className="font-medium">{teacher.name}</TableCell>
+                  <TableCell className="capitalize">{teacher.subject}</TableCell>
+                  <TableCell>
+                    <span className="px-2 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-medium capitalize">
+                      {teacher.compensationType}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    PKR {teacher.revenue.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span className="font-semibold text-green-600">
+                      PKR {teacher.earnedAmount.toLocaleString()}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
+                      {teacher.classesCount}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700"
+                      onClick={() => toast.success(`Payment voucher generated for ${teacher.name}`)}
+                    >
+                      <Wallet className="mr-2 h-3 w-3" />
+                      Pay Now
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* TASK 3: Daily Expenses Section */}
+      <div className="mt-6 rounded-xl border border-red-200 bg-red-50/50 p-6 card-shadow">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <TrendingDown className="h-5 w-5 text-red-600" />
+              Daily Expenses
+            </h3>
+            <p className="text-sm text-muted-foreground">Track operational costs</p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-muted-foreground">Total Expenses</p>
+            <p className="text-2xl font-bold text-red-600">PKR {totalExpenses.toLocaleString()}</p>
+          </div>
+        </div>
+
+        {/* Add Expense Form */}
+        <div className="grid gap-4 sm:grid-cols-4 mb-6 p-4 rounded-lg border border-red-200 bg-white">
+          <div className="space-y-2">
+            <Label htmlFor="expense-title">Expense Title</Label>
+            <Input
+              id="expense-title"
+              placeholder="e.g., Electricity Bill"
+              value={expenseTitle}
+              onChange={(e) => setExpenseTitle(e.target.value)}
+              className="bg-background"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="expense-category">Category</Label>
+            <Select value={expenseCategory} onValueChange={setExpenseCategory}>
+              <SelectTrigger className="bg-background">
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Utilities">Utilities</SelectItem>
+                <SelectItem value="Rent">Rent</SelectItem>
+                <SelectItem value="Salaries">Salaries</SelectItem>
+                <SelectItem value="Stationery">Stationery</SelectItem>
+                <SelectItem value="Marketing">Marketing</SelectItem>
+                <SelectItem value="Misc">Miscellaneous</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="expense-amount">Amount (PKR)</Label>
+            <Input
+              id="expense-amount"
+              type="number"
+              placeholder="0"
+              value={expenseAmount}
+              onChange={(e) => setExpenseAmount(e.target.value)}
+              className="bg-background"
+            />
+          </div>
+          <div className="flex items-end">
+            <Button
+              onClick={handleAddExpense}
+              disabled={createExpenseMutation.isPending}
+              className="w-full bg-red-600 hover:bg-red-700"
+            >
+              {createExpenseMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding...</>
+              ) : (
+                <><Plus className="mr-2 h-4 w-4" /> Add Expense</>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {/* Recent Expenses List */}
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-foreground mb-3">Recent Expenses</h4>
+          {expensesLoading ? (
+            <div className="text-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+            </div>
+          ) : expenses.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No expenses recorded yet
+            </div>
+          ) : (
+            expenses.map((expense: any) => (
+              <div
+                key={expense._id}
+                className="flex items-center justify-between p-3 rounded-lg border border-red-200 bg-white hover:bg-red-50/50 transition-colors"
+              >
+                <div className="flex-1">
+                  <p className="font-medium text-foreground">{expense.title}</p>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
+                      {expense.category}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(expense.date).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-bold text-red-600">
+                    PKR {expense.amount.toLocaleString()}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-100"
+                    onClick={() => deleteExpenseMutation.mutate(expense._id)}
+                    disabled={deleteExpenseMutation.isPending}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );

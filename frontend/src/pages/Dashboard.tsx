@@ -77,13 +77,16 @@ const Dashboard = () => {
 
   // Calculate statistics from fetched data
   const totalStudents = students.length;
-  const activeStudents = students.filter((s) => s.status === "active").length;
-  const preMedicalCount = students.filter((s) => s.group === "Pre-Medical").length;
-  const preEngineeringCount = students.filter((s) => s.group === "Pre-Engineering").length;
-  const mdcatEcatCount = students.filter((s) => s.class === "MDCAT" || s.class === "ECAT").length;
+  const activeStudents = students.filter((s: any) => s.status === "active").length;
+  const preMedicalCount = students.filter((s: any) => s.group === "Pre-Medical").length;
+  const preEngineeringCount = students.filter((s: any) => s.group === "Pre-Engineering").length;
+  const mdcatEcatCount = students.filter((s: any) =>
+    s.class?.toLowerCase()?.includes('mdcat') || s.class?.toLowerCase()?.includes('ecat')
+  ).length;
 
   // Calculate new students this month (last 30 days)
-  const newStudentsThisMonth = students.filter((student) => {
+  const newStudentsThisMonth = students.filter((student: any) => {
+    if (!student.admissionDate) return false;
     const admissionDate = new Date(student.admissionDate);
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -98,16 +101,18 @@ const Dashboard = () => {
 
   // Get recent admissions (last 4 students)
   const recentAdmissions = students
-    .sort((a, b) => new Date(b.admissionDate) - new Date(a.admissionDate))
+    .sort((a: any, b: any) => new Date(b.admissionDate).getTime() - new Date(a.admissionDate).getTime())
     .slice(0, 4)
-    .map((student) => ({
-      name: student.name,
-      class: student.class,
-      group: student.group,
-      date: new Date(student.admissionDate).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      }),
+    .map((student: any) => ({
+      name: student.studentName || 'Unknown',
+      class: student.class || 'N/A',
+      group: student.group || 'N/A',
+      date: student.admissionDate
+        ? new Date(student.admissionDate).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        })
+        : 'N/A',
     }));
 
   // Loading state

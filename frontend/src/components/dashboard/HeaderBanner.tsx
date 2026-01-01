@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 
 interface HeaderBannerProps {
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   children?: ReactNode;
 }
 

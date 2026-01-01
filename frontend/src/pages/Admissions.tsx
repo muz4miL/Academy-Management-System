@@ -42,6 +42,9 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import confetti from "canvas-confetti";
 
+// TASK 1: Draft Persistence Key
+const ADMISSION_DRAFT_KEY = "academy_sparkle_admission_draft";
+
 // Type for subject with fee
 interface SubjectWithFee {
   name: string;
@@ -90,6 +93,9 @@ const Admissions = () => {
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [savedStudent, setSavedStudent] = useState<any>(null);
 
+  // TASK 1: Draft Persistence State
+  const [draftSaved, setDraftSaved] = useState(false);
+
   // Quick Add form state
   const [quickName, setQuickName] = useState("");
   const [quickClassId, setQuickClassId] = useState("");
@@ -97,6 +103,77 @@ const Admissions = () => {
   const [quickParentCell, setQuickParentCell] = useState("");
   const [quickTotalFee, setQuickTotalFee] = useState("");
   const [quickPaidAmount, setQuickPaidAmount] = useState("");
+
+  // TASK 1: Load Draft on Component Mount
+  useEffect(() => {
+    const savedDraft = localStorage.getItem(ADMISSION_DRAFT_KEY);
+    if (savedDraft) {
+      try {
+        const draft = JSON.parse(savedDraft);
+        setStudentName(draft.studentName || "");
+        setFatherName(draft.fatherName || "");
+        setSelectedClassId(draft.selectedClassId || "");
+        setSelectedSessionId(draft.selectedSessionId || "");
+        setGroup(draft.group || "");
+        setSelectedSubjects(draft.selectedSubjects || []);
+        setParentCell(draft.parentCell || "");
+        setStudentCell(draft.studentCell || "");
+        setAddress(draft.address || "");
+        setAdmissionDate(draft.admissionDate || new Date().toISOString().split("T")[0]);
+        setTotalFee(draft.totalFee || "");
+        setPaidAmount(draft.paidAmount || "");
+        setIsCustomFeeMode(draft.isCustomFeeMode || false);
+        console.log('✅ Draft loaded from localStorage');
+      } catch (error) {
+        console.error('❌ Error loading draft:', error);
+      }
+    }
+  }, []);
+
+  // TASK 1: Save Draft to localStorage whenever form state changes
+  useEffect(() => {
+    // Skip if form is completely empty
+    if (!studentName && !fatherName && !selectedClassId && !parentCell) {
+      return;
+    }
+
+    const draft = {
+      studentName,
+      fatherName,
+      selectedClassId,
+      selectedSessionId,
+      group,
+      selectedSubjects,
+      parentCell,
+      studentCell,
+      address,
+      admissionDate,
+      totalFee,
+      paidAmount,
+      isCustomFeeMode,
+    };
+
+    localStorage.setItem(ADMISSION_DRAFT_KEY, JSON.stringify(draft));
+    setDraftSaved(true);
+
+    // Hide "Draft saved" indicator after 2 seconds
+    const timer = setTimeout(() => setDraftSaved(false), 2000);
+    return () => clearTimeout(timer);
+  }, [
+    studentName,
+    fatherName,
+    selectedClassId,
+    selectedSessionId,
+    group,
+    selectedSubjects,
+    parentCell,
+    studentCell,
+    address,
+    admissionDate,
+    totalFee,
+    paidAmount,
+    isCustomFeeMode,
+  ]);
 
   // TASK 1: Auto-select active or upcoming session for Quick Add
   useEffect(() => {
@@ -222,6 +299,11 @@ const Admissions = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
       setSavedStudent(data.data);
+
+      // TASK 3: Clear draft after successful save (Safety Flush)
+      localStorage.removeItem(ADMISSION_DRAFT_KEY);
+      console.log('🗑️ Draft cleared after successful save');
+
       triggerConfetti();
       setSuccessModalOpen(true);
     },
@@ -254,12 +336,21 @@ const Admissions = () => {
     }
 
     // Prepare student data
+    // TASK 1 FIX: Transform subjects from string array to objects with locked pricing
+    const subjectsWithFees = selectedSubjects.map((subjectName) => {
+      const subject = classSubjects.find(s => s.name === subjectName);
+      return {
+        name: subjectName,
+        fee: subject?.fee || 0,
+      };
+    });
+
     const studentData = {
       studentName,
       fatherName,
       class: selectedClass?.className || "",
       group,
-      subjects: selectedSubjects,
+      subjects: subjectsWithFees, // Send as array of {name, fee} objects
       parentCell,
       studentCell: studentCell || undefined,
       address: address || undefined,
@@ -314,6 +405,7 @@ const Admissions = () => {
     setQuickPaidAmount("");
   };
 
+  // TASK 3: Reset form and clear draft
   const handleCancel = () => {
     setStudentName("");
     setFatherName("");
@@ -328,6 +420,10 @@ const Admissions = () => {
     setTotalFee("");
     setPaidAmount("");
     setIsCustomFeeMode(false);
+
+    // Clear localStorage draft
+    localStorage.removeItem(ADMISSION_DRAFT_KEY);
+    console.log('🗑️ Draft manually cleared via Cancel');
   };
 
   // Get balance
@@ -342,7 +438,17 @@ const Admissions = () => {
     <DashboardLayout title="Admissions">
       <HeaderBanner
         title="New Admission"
-        subtitle="Register a new student to the academy"
+        subtitle={
+          <div className="flex items-center gap-2">
+            <span>Register a new student to the academy</span>
+            {draftSaved && (
+              <span className="flex items-center gap-1 text-xs text-slate-500 animate-in fade-in duration-200">
+                <CheckCircle2 className="h-3 w-3" />
+                Draft saved
+              </span>
+            )}
+          </div>
+        }
       >
         <Button
           className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"

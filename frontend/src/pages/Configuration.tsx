@@ -18,6 +18,9 @@ import {
   Users,
   CreditCard,
   Loader2,
+  BookOpen,
+  Trash2,
+  Plus,
 } from "lucide-react";
 import { AddTeacherModal } from "@/components/dashboard/AddTeacherModal";
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +49,9 @@ const Configuration = () => {
   const [defaultLateFee, setDefaultLateFee] = useState("500");
   const [feeDueDay, setFeeDueDay] = useState("10");
 
+  // --- Global Subject Fees State ---
+  const [defaultSubjectFees, setDefaultSubjectFees] = useState<Array<{ name: string; fee: number }>>([]);
+
   // --- Fetch Settings on Component Mount ---
   useEffect(() => {
     const fetchSettings = async () => {
@@ -71,6 +77,9 @@ const Configuration = () => {
           // Student Policies
           setDefaultLateFee(String(data.defaultLateFee || 500));
           setFeeDueDay(data.feeDueDay || "10");
+
+          // Global Subject Fees
+          setDefaultSubjectFees(data.defaultSubjectFees || []);
         }
       } catch (error) {
         console.error("Failed to fetch settings:", error);
@@ -86,6 +95,27 @@ const Configuration = () => {
 
     fetchSettings();
   }, [toast]);
+
+  // --- Subject Fee Management Helpers ---
+  const addSubject = () => {
+    setDefaultSubjectFees([...defaultSubjectFees, { name: "", fee: 0 }]);
+  };
+
+  const removeSubject = (index: number) => {
+    setDefaultSubjectFees(defaultSubjectFees.filter((_, i) => i !== index));
+  };
+
+  const updateSubjectName = (index: number, name: string) => {
+    const updated = [...defaultSubjectFees];
+    updated[index].name = name;
+    setDefaultSubjectFees(updated);
+  };
+
+  const updateSubjectFee = (index: number, fee: string) => {
+    const updated = [...defaultSubjectFees];
+    updated[index].fee = Number(fee) || 0;
+    setDefaultSubjectFees(updated);
+  };
 
   // --- Save Settings Handler ---
   const handleSaveSettings = async () => {
@@ -108,6 +138,9 @@ const Configuration = () => {
         // Student Policies
         defaultLateFee: Number(defaultLateFee),
         feeDueDay,
+
+        // Global Subject Fees
+        defaultSubjectFees,
       };
 
       const response = await fetch("http://localhost:5000/api/config", {
@@ -157,14 +190,14 @@ const Configuration = () => {
         </Button>
       </HeaderBanner>
 
-      {/* Task 2: Final UI Tightening (3 Columns, Aligned Top) */}
+      {/* Configuration Sections (4 Columns) */}
       {isLoading ? (
         <div className="mt-6 flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <span className="ml-3 text-muted-foreground">Loading settings...</span>
         </div>
       ) : (
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
           {/* Column 1: General Info */}
           <div className="rounded-xl border border-border bg-card p-5 shadow-sm h-fit">
             <div className="mb-4 flex items-center gap-3 border-b border-border pb-3">
@@ -318,6 +351,66 @@ const Configuration = () => {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+          </div>
+
+          {/* Column 4: Subject Fee Management */}
+          <div className="rounded-xl border border-border bg-card p-5 shadow-sm h-fit">
+            <div className="mb-4 flex items-center gap-3 border-b border-border pb-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                <BookOpen className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="text-lg font-bold text-foreground">
+                Subject Fees
+              </h3>
+            </div>
+
+            <div className="space-y-3">
+              {defaultSubjectFees.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No global subject fees defined yet
+                </p>
+              ) : (
+                defaultSubjectFees.map((subject, index) => (
+                  <div key={index} className="flex gap-2 items-center">
+                    <Input
+                      placeholder="Subject name"
+                      value={subject.name}
+                      onChange={(e) => updateSubjectName(index, e.target.value)}
+                      className="h-9 flex-1"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Fee"
+                      value={subject.fee}
+                      onChange={(e) => updateSubjectFee(index, e.target.value)}
+                      className="h-9 w-24"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeSubject(index)}
+                      className="h-9 w-9 hover:bg-red-50 hover:text-red-600"
+                      title="Remove subject"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))
+              )}
+
+              <Button
+                variant="outline"
+                onClick={addSubject}
+                className="w-full h-9 text-sm"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Subject
+              </Button>
+
+              <p className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border">
+                These fees will be used as defaults when creating new classes
+              </p>
             </div>
           </div>
         </div>

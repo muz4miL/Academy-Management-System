@@ -31,6 +31,7 @@ const configRoutes = require('./routes/config');
 const classRoutes = require('./routes/classes');
 const sessionRoutes = require('./routes/sessions');
 const timetableRoutes = require('./routes/timetable');
+const expenseRoutes = require('./routes/expenses');
 
 // API Routes
 app.use('/api/students', studentRoutes);
@@ -40,6 +41,7 @@ app.use('/api/config', configRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/timetable', timetableRoutes);
+app.use('/api/expenses', expenseRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

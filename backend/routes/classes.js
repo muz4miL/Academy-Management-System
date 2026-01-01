@@ -3,6 +3,33 @@ const router = express.Router();
 const Class = require('../models/Class');
 const Student = require('../models/Student');
 
+// Helper: Remove duplicate subjects (case-insensitive), keeping the one with highest fee
+const deduplicateSubjects = (subjects) => {
+    if (!Array.isArray(subjects)) return [];
+
+    const subjectMap = new Map();
+
+    for (const subject of subjects) {
+        const subjectName = typeof subject === 'string' ? subject : subject.name;
+        const normalizedName = subjectName.toLowerCase();
+        const currentFee = typeof subject === 'object' ? (subject.fee || 0) : 0;
+
+        if (subjectMap.has(normalizedName)) {
+            const existing = subjectMap.get(normalizedName);
+            const existingFee = typeof existing === 'object' ? (existing.fee || 0) : 0;
+
+            // Keep the one with higher fee
+            if (currentFee > existingFee) {
+                subjectMap.set(normalizedName, subject);
+            }
+        } else {
+            subjectMap.set(normalizedName, subject);
+        }
+    }
+
+    return Array.from(subjectMap.values());
+};
+
 // @route   GET /api/classes
 // @desc    Get all classes with student count and revenue
 // @access  Public
@@ -41,10 +68,21 @@ router.get('/', async (req, res) => {
 
                 const currentRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
 
+                // TASK 2: Calculate totalExpected (sum of totalFee) and totalPending
+                const expectedResult = await Student.aggregate([
+                    { $match: { classRef: cls._id } },
+                    { $group: { _id: null, totalExpected: { $sum: '$totalFee' } } }
+                ]);
+
+                const totalExpected = expectedResult.length > 0 ? expectedResult[0].totalExpected : 0;
+                const totalPending = totalExpected - currentRevenue;
+
                 return {
                     ...cls,
                     studentCount,
                     currentRevenue,
+                    totalExpected,
+                    totalPending,
                 };
             })
         );
@@ -88,12 +126,22 @@ router.get('/:id', async (req, res) => {
         ]);
         const currentRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
 
+        // Calculate totalExpected and totalPending
+        const expectedResult = await Student.aggregate([
+            { $match: { classRef: classDoc._id } },
+            { $group: { _id: null, totalExpected: { $sum: '$totalFee' } } }
+        ]);
+        const totalExpected = expectedResult.length > 0 ? expectedResult[0].totalExpected : 0;
+        const totalPending = totalExpected - currentRevenue;
+
         res.json({
             success: true,
             data: {
                 ...classDoc,
                 studentCount,
                 currentRevenue,
+                totalExpected,
+                totalPending,
             },
         });
     } catch (error) {
@@ -128,6 +176,9 @@ router.post('/', async (req, res) => {
         if (!Array.isArray(classData.subjects)) {
             classData.subjects = [];
         }
+
+        // Remove duplicate subjects (case-insensitive)
+        classData.subjects = deduplicateSubjects(classData.subjects);
 
         // Ensure baseFee is a number
         if (classData.baseFee !== undefined) {
@@ -191,6 +242,11 @@ router.put('/:id', async (req, res) => {
         // Ensure baseFee is a number
         if (updateData.baseFee !== undefined) {
             updateData.baseFee = Number(updateData.baseFee) || 0;
+        }
+
+        // Remove duplicate subjects (case-insensitive)
+        if (updateData.subjects && Array.isArray(updateData.subjects)) {
+            updateData.subjects = deduplicateSubjects(updateData.subjects);
         }
 
         // Never allow frontend to override classId

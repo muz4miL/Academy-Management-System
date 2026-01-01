@@ -96,7 +96,13 @@ export const ViewEditStudentModal = ({
             setFatherName(student.fatherName || "");
             setStudentClass(student.class || "");
             setGroup(student.group || "");
-            setSubjects(student.subjects || []);
+
+            // BUGFIX: Handle subjects as objects {name, fee} or strings
+            const subjectNames = (student.subjects || []).map((s: any) =>
+                typeof s === 'string' ? s.toLowerCase() : s.name.toLowerCase()
+            );
+            setSubjects(subjectNames);
+
             setParentCell(student.parentCell || "");
             setStudentCell(student.studentCell || "");
             setAddress(student.address || "");
@@ -135,6 +141,8 @@ export const ViewEditStudentModal = ({
         mutationFn: ({ id, data }: { id: string; data: any }) => studentApi.update(id, data),
         onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ['students'] });
+            queryClient.invalidateQueries({ queryKey: ['classes'] }); // Update class revenue stats
+            queryClient.invalidateQueries({ queryKey: ['finance'] }); // Update finance dashboard
             toast.success(`${data.data.studentName} has been updated successfully.`);
             onOpenChange(false);
         },
@@ -265,18 +273,18 @@ export const ViewEditStudentModal = ({
                             </div>
 
                             {/* Subjects - View Mode */}
-                            {subjects.length > 0 && (
+                            {student?.subjects && student.subjects.length > 0 && (
                                 <div>
                                     <div className="flex items-center gap-2 mb-3">
                                         <BookOpen className="h-4 w-4 text-sky-600" />
                                         <span className="text-sm font-semibold text-foreground uppercase tracking-wide">Enrolled Subjects</span>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
-                                        {subjects.map((subjectId) => {
-                                            const subject = [...premedSubjects, ...preengSubjects].find(s => s.id === subjectId);
+                                        {student.subjects.map((subject: any, index: number) => {
+                                            const subjectName = typeof subject === 'string' ? subject : subject.name;
                                             return (
-                                                <span key={subjectId} className="px-3 py-1.5 rounded-full bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 text-sm font-medium border border-sky-200 dark:border-sky-800">
-                                                    {subject?.label || subjectId}
+                                                <span key={index} className="px-3 py-1.5 rounded-full bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 text-sm font-medium border border-sky-200 dark:border-sky-800">
+                                                    {subjectName}
                                                 </span>
                                             );
                                         })}
@@ -372,12 +380,12 @@ export const ViewEditStudentModal = ({
                                                 <SelectValue placeholder="Select class" />
                                             </SelectTrigger>
                                             <SelectContent className="bg-popover">
-                                                <SelectItem value="9th">9th Grade</SelectItem>
-                                                <SelectItem value="10th">10th Grade</SelectItem>
-                                                <SelectItem value="11th">11th Grade</SelectItem>
-                                                <SelectItem value="12th">12th Grade</SelectItem>
-                                                <SelectItem value="MDCAT">MDCAT Prep</SelectItem>
-                                                <SelectItem value="ECAT">ECAT Prep</SelectItem>
+                                                <SelectItem value="9th Grade">9th Grade</SelectItem>
+                                                <SelectItem value="10th Grade">10th Grade</SelectItem>
+                                                <SelectItem value="11th Grade">11th Grade</SelectItem>
+                                                <SelectItem value="12th Grade">12th Grade</SelectItem>
+                                                <SelectItem value="MDCAT Prep">MDCAT Prep</SelectItem>
+                                                <SelectItem value="ECAT Prep">ECAT Prep</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>

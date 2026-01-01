@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { BookOpen, Plus, Search, Loader2, Edit, Trash2, DollarSign, Users } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { classApi } from "@/lib/api";
+import { classApi, settingsApi } from "@/lib/api";
 import { toast } from "sonner";
 
 // Section options
@@ -60,15 +60,6 @@ const classNameOptions = [
   "12th Grade",
   "MDCAT Prep",
   "ECAT Prep",
-];
-
-// Subject options with default fees
-const subjectOptions = [
-  { id: "Biology", label: "Biology", defaultFee: 3000 },
-  { id: "Chemistry", label: "Chemistry", defaultFee: 2500 },
-  { id: "Physics", label: "Physics", defaultFee: 3000 },
-  { id: "Mathematics", label: "Mathematics", defaultFee: 2500 },
-  { id: "English", label: "English", defaultFee: 2000 },
 ];
 
 // Type for subject with fee
@@ -96,6 +87,21 @@ const Classes = () => {
   const [formSubjects, setFormSubjects] = useState<SubjectWithFee[]>([]);
   const [formBaseFee, setFormBaseFee] = useState("");
   const [formStatus, setFormStatus] = useState("active");
+
+  // TASK 3: Fetch global subject fees from Settings
+  const { data: settingsData } = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => settingsApi.get(),
+  });
+
+  const globalSubjectFees = settingsData?.data?.defaultSubjectFees || [];
+
+  // Transform global subjects to subject options format
+  const subjectOptions = globalSubjectFees.map((subject: any) => ({
+    id: subject.name,
+    label: subject.name,
+    defaultFee: subject.fee,
+  }));
 
   // Fetch classes
   const { data, isLoading, isError } = useQuery({
@@ -384,7 +390,7 @@ const Classes = () => {
                 <TableHead className="font-semibold">Section</TableHead>
                 <TableHead className="font-semibold">Subjects & Fees</TableHead>
                 <TableHead className="font-semibold text-center">Students</TableHead>
-                <TableHead className="font-semibold text-right">Revenue</TableHead>
+                <TableHead className="font-semibold text-right">Financial Status</TableHead>
                 <TableHead className="font-semibold text-center">Status</TableHead>
                 <TableHead className="font-semibold text-right">Actions</TableHead>
               </TableRow>
@@ -439,13 +445,21 @@ const Classes = () => {
                         <span className="text-[10px] text-muted-foreground">enrolled</span>
                       </div>
                     </TableCell>
-                    {/* TASK 2: Revenue from this class */}
+                    {/* TASK 3: Financial Status - Collected & Pending */}
                     <TableCell className="text-right">
-                      <div className="flex flex-col items-end">
-                        <span className="font-semibold text-green-600">
-                          {(classDoc.currentRevenue || 0).toLocaleString()} PKR
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">collected</span>
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground">Collected:</span>
+                          <span className="font-semibold text-green-600">
+                            {(classDoc.currentRevenue || 0).toLocaleString()} PKR
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground">Pending:</span>
+                          <span className="font-semibold text-amber-600">
+                            {(classDoc.totalPending || 0).toLocaleString()} PKR
+                          </span>
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
@@ -599,20 +613,10 @@ const Classes = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Default Fee (PKR)</Label>
-                <Input
-                  type="number"
-                  placeholder="Fallback fee"
-                  value={formBaseFee}
-                  onChange={(e) => setFormBaseFee(e.target.value)}
-                  className="bg-background"
-                />
-                <p className="text-xs text-muted-foreground">Used if subject fee is not set</p>
-              </div>
-              <div className="space-y-2">
-                <Label>Status</Label>
+            {/* Status Selection */}
+            <div className="flex justify-center">
+              <div className="space-y-2 w-64">
+                <Label className="text-center block">Class Status</Label>
                 <Select value={formStatus} onValueChange={setFormStatus}>
                   <SelectTrigger className="bg-background">
                     <SelectValue />
@@ -768,19 +772,10 @@ const Classes = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Default Fee (PKR)</Label>
-                <Input
-                  type="number"
-                  placeholder="Fallback fee"
-                  value={formBaseFee}
-                  onChange={(e) => setFormBaseFee(e.target.value)}
-                  className="bg-background"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Status</Label>
+            {/* Status Selection */}
+            <div className="flex justify-center">
+              <div className="space-y-2 w-64">
+                <Label className="text-center block">Class Status</Label>
                 <Select value={formStatus} onValueChange={setFormStatus}>
                   <SelectTrigger className="bg-background">
                     <SelectValue />
