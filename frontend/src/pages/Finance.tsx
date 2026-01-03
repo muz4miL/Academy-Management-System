@@ -47,8 +47,8 @@ const Finance = () => {
   const [expenseCategory, setExpenseCategory] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
 
-  // Fetch real-time finance stats
-  const { data: financeData, isLoading: statsLoading } = useQuery({
+  // Fetch real-time finance stats with error handling
+  const { data: financeData, isLoading: statsLoading, isError: statsError } = useQuery({
     queryKey: ['finance', 'stats'],
     queryFn: async () => {
       const response = await fetch(`${API_BASE_URL}/api/finance/stats/overview`);
@@ -57,6 +57,7 @@ const Finance = () => {
       return result.data;
     },
     refetchInterval: 30000,
+    retry: 2,
   });
 
   // Fetch expenses
@@ -127,11 +128,28 @@ const Finance = () => {
     });
   };
 
+  // Loading state
   if (statsLoading) {
     return (
       <DashboardLayout title="Finance">
         <div className="flex items-center justify-center h-96">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Error state
+  if (statsError) {
+    return (
+      <DashboardLayout title="Finance">
+        <div className="flex flex-col items-center justify-center h-96 gap-4">
+          <AlertCircle className="h-12 w-12 text-red-500" />
+          <p className="text-lg font-medium text-foreground">Failed to load finance data</p>
+          <p className="text-sm text-muted-foreground">Please check your connection and try again</p>
+          <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['finance'] })}>
+            Retry
+          </Button>
         </div>
       </DashboardLayout>
     );
@@ -152,12 +170,16 @@ const Finance = () => {
 
   const expenses = expensesData || [];
 
-  // TASK 4: Triple-Split Financial Chart Data
-  const chartData = [
-    { name: 'Net Profit', value: Math.max(0, netProfit), color: '#3b82f6' }, // Blue
-    { name: 'Teacher Payouts', value: totalTeacherLiabilities, color: '#10b981' }, // Green
-    { name: 'Expenses', value: totalExpenses, color: '#ef4444' }, // Red
+  // TASK 4: Triple-Split Financial Chart Data - Filter out zero values
+  const rawChartData = [
+    { name: 'Net Profit', value: Math.max(0, netProfit || 0), color: '#3b82f6' }, // Blue
+    { name: 'Teacher Payouts', value: totalTeacherLiabilities || 0, color: '#10b981' }, // Green
+    { name: 'Expenses', value: totalExpenses || 0, color: '#ef4444' }, // Red
   ];
+
+  // Only include non-zero values in chart
+  const chartData = rawChartData.filter(item => item.value > 0);
+  const hasChartData = chartData.length > 0;
 
   const COLORS = ['#3b82f6', '#10b981', '#ef4444'];
 
@@ -208,26 +230,32 @@ const Finance = () => {
           <h3 className="mb-4 text-lg font-semibold text-foreground">
             Financial Distribution
           </h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <PieChart>
-              <Pie
-                data={chartData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value: number) => `PKR ${value.toLocaleString()}`} />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
+          {hasChartData ? (
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={chartData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value: number) => `PKR ${value.toLocaleString()}`} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-[280px] text-muted-foreground">
+              No financial data available yet
+            </div>
+          )}
         </div>
 
         {/* Revenue Breakdown */}

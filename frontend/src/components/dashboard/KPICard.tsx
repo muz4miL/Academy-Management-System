@@ -10,7 +10,7 @@ interface KPICardProps {
     value: number;
     isPositive: boolean;
   };
-  variant?: "default" | "primary" | "success" | "warning";
+  variant?: "default" | "primary" | "success" | "warning" | "danger";
 }
 
 const variantStyles = {
@@ -29,6 +29,10 @@ const variantStyles = {
   warning: {
     iconBg: "bg-warning-light",
     iconColor: "text-warning",
+  },
+  danger: {
+    iconBg: "bg-red-100",
+    iconColor: "text-red-600",
   },
 };
 
