@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,16 +32,19 @@ import {
   CheckCircle2,
   Loader2,
   DollarSign,
+  Wallet,
   Pencil,
   Lock,
   Calculator,
-  Package
+  Package,
+  Printer
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { studentApi, classApi, sessionApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import confetti from "canvas-confetti";
+import { AdmissionSlip } from "@/components/admissions/AdmissionSlip";
 
 // TASK 1: Draft Persistence Key
 const ADMISSION_DRAFT_KEY = "academy_sparkle_admission_draft";
@@ -84,6 +88,7 @@ const Admissions = () => {
   );
   const [totalFee, setTotalFee] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
+  const [feeValidationError, setFeeValidationError] = useState("");
 
   // TASK 4: Custom Fee Toggle (Lump Sum mode)
   const [isCustomFeeMode, setIsCustomFeeMode] = useState(false);
@@ -92,17 +97,18 @@ const Admissions = () => {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [savedStudent, setSavedStudent] = useState<any>(null);
+  const [savedSession, setSavedSession] = useState<any>(null);
 
   // TASK 1: Draft Persistence State
   const [draftSaved, setDraftSaved] = useState(false);
 
-  // Quick Add form state
   const [quickName, setQuickName] = useState("");
   const [quickClassId, setQuickClassId] = useState("");
   const [quickSessionId, setQuickSessionId] = useState("");
   const [quickParentCell, setQuickParentCell] = useState("");
   const [quickTotalFee, setQuickTotalFee] = useState("");
   const [quickPaidAmount, setQuickPaidAmount] = useState("");
+  const [quickFeeValidationError, setQuickFeeValidationError] = useState("");
 
   // TASK 1: Load Draft on Component Mount
   useEffect(() => {
@@ -300,6 +306,12 @@ const Admissions = () => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
       setSavedStudent(data.data);
 
+      // Save session info for print slip
+      if (selectedSessionId) {
+        const session = sessions.find((s: any) => s._id === selectedSessionId);
+        setSavedSession(session);
+      }
+
       // TASK 3: Clear draft after successful save (Safety Flush)
       localStorage.removeItem(ADMISSION_DRAFT_KEY);
       console.log('🗑️ Draft cleared after successful save');
@@ -327,13 +339,28 @@ const Admissions = () => {
       return;
     }
 
-    if (!totalFee || parseFloat(totalFee) <= 0) {
+    if (!totalFee || Number(totalFee) <= 0) {
       toast.error("Invalid Fee", {
         description: "Please enter a valid total fee amount",
         duration: 3000,
       });
       return;
     }
+
+    // TASK 1: Safety Check - Prevent paidAmount from exceeding totalFee
+    const totalFeeNum = Number(totalFee);
+    const paidAmountNum = Number(paidAmount) || 0;
+
+    if (paidAmountNum > totalFeeNum) {
+      toast.error("Invalid Payment Amount", {
+        description: `Received amount (${paidAmountNum.toLocaleString()} PKR) cannot exceed total fee (${totalFeeNum.toLocaleString()} PKR)`,
+        duration: 4000,
+      });
+      setFeeValidationError("Received amount cannot exceed total fee");
+      return;
+    }
+
+    setFeeValidationError("");
 
     // Prepare student data
     // TASK 1 FIX: Transform subjects from string array to objects with locked pricing
@@ -405,7 +432,7 @@ const Admissions = () => {
     setQuickPaidAmount("");
   };
 
-  // TASK 3: Reset form and clear draft
+  // TASK 4: Reset form and clear ALL state including validation errors
   const handleCancel = () => {
     setStudentName("");
     setFatherName("");
@@ -420,16 +447,22 @@ const Admissions = () => {
     setTotalFee("");
     setPaidAmount("");
     setIsCustomFeeMode(false);
+    setFeeValidationError(""); // Clear validation error
 
     // Clear localStorage draft
     localStorage.removeItem(ADMISSION_DRAFT_KEY);
     console.log('🗑️ Draft manually cleared via Cancel');
   };
 
-  // Get balance
+  // Get balance - TASK 1: Use Math.max to prevent negative balance
   const balance = totalFee && paidAmount
-    ? (parseFloat(totalFee) - parseFloat(paidAmount)).toString()
+    ? Math.max(0, Number(totalFee) - Number(paidAmount)).toString()
     : totalFee || "0";
+
+  // Print admission slip handler
+  const handlePrintSlip = () => {
+    window.print();
+  };
 
   // Calculated fee display
   const calculatedFee = calculateSubjectBasedFee();
@@ -744,8 +777,31 @@ const Admissions = () => {
                   type="number"
                   placeholder="0"
                   value={paidAmount}
-                  onChange={(e) => setPaidAmount(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setPaidAmount(value);
+
+                    // TASK 1: Real-time validation
+                    if (value && totalFee) {
+                      const paidNum = Number(value);
+                      const totalNum = Number(totalFee);
+                      if (paidNum > totalNum) {
+                        setFeeValidationError("Received amount cannot exceed total fee");
+                      } else {
+                        setFeeValidationError("");
+                      }
+                    } else {
+                      setFeeValidationError("");
+                    }
+                  }}
+                  className={feeValidationError ? "border-red-500 focus-visible:ring-red-500" : ""}
                 />
+                {feeValidationError && (
+                  <p className="text-xs text-red-600 flex items-center gap-1 font-medium">
+                    <AlertCircle className="h-3 w-3" />
+                    {feeValidationError}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -931,23 +987,48 @@ const Admissions = () => {
                   type="number"
                   placeholder="0"
                   value={quickPaidAmount}
-                  onChange={(e) => setQuickPaidAmount(e.target.value)}
-                  className="h-9"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setQuickPaidAmount(value);
+
+                    // TASK 1: Real-time validation for Quick Add
+                    if (value && quickTotalFee) {
+                      const paidNum = Number(value);
+                      const totalNum = Number(quickTotalFee);
+                      if (paidNum > totalNum) {
+                        setQuickFeeValidationError("Received amount cannot exceed total fee");
+                      } else {
+                        setQuickFeeValidationError("");
+                      }
+                    } else {
+                      setQuickFeeValidationError("");
+                    }
+                  }}
+                  className={`h-9 ${quickFeeValidationError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                 />
+                {quickFeeValidationError && (
+                  <p className="text-xs text-red-600 flex items-center gap-1 font-medium">
+                    <AlertCircle className="h-3 w-3" />
+                    {quickFeeValidationError}
+                  </p>
+                )}
               </div>
             </div>
           </div>
           <DialogFooter className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => setQuickAddOpen(false)}
+              onClick={() => {
+                setQuickAddOpen(false);
+                setQuickFeeValidationError("");
+              }}
               className="flex-1"
             >
               Cancel
             </Button>
             <Button
               onClick={handleQuickAdd}
-              disabled={createStudentMutation.isPending}
+              disabled={createStudentMutation.isPending || !!quickFeeValidationError}
               className="flex-1 bg-sky-600 hover:bg-sky-700"
               style={{ borderRadius: "0.75rem" }}
             >
@@ -964,74 +1045,175 @@ const Admissions = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Success Modal */}
+      {/* Success Modal - Elegant Compact Design */}
       <Dialog open={successModalOpen} onOpenChange={setSuccessModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-              <CheckCircle2 className="h-8 w-8 text-green-600" />
+        <DialogContent className="sm:max-w-[420px] p-0 bg-white/95 backdrop-blur-xl border-2 border-sky-100 shadow-2xl">
+          {/* Ultra-Compact Header - Horizontal Layout */}
+          <div className="bg-gradient-to-br from-sky-500 via-sky-600 to-indigo-600 px-5 py-4 relative overflow-hidden rounded-t-xl">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12"></div>
+            <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/10 rounded-full -ml-10 -mb-10"></div>
+
+            <div className="relative z-10 flex items-center gap-3">
+              {/* Success Checkmark */}
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm border-2 border-white/30 shadow-md flex-shrink-0">
+                <CheckCircle2 className="h-7 w-7 text-white" strokeWidth={2.5} />
+              </div>
+
+              <div className="flex-1">
+                <DialogTitle className="text-xl font-bold text-white drop-shadow-md">
+                  Enrollment Confirmed
+                </DialogTitle>
+                <div className="text-sky-50 text-[10px]">
+                  Student successfully enrolled
+                </div>
+              </div>
             </div>
-            <DialogTitle className="text-center text-xl font-semibold">
-              Admission Successful!
-            </DialogTitle>
-            <DialogDescription className="text-center">
-              {savedStudent?.studentName} has been enrolled successfully.
-            </DialogDescription>
-          </DialogHeader>
+          </div>
 
           {savedStudent && (
-            <div className="my-4 rounded-lg bg-secondary p-4">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Student ID</p>
-                  <p className="font-mono font-semibold text-sky-600">{savedStudent.studentId}</p>
+            <div className="px-5 py-4 space-y-3">
+              {/* Ultra-Compact ID Card */}
+              <div className="bg-gradient-to-br from-slate-50 to-sky-50/50 border border-sky-200 rounded-lg p-4 shadow-sm">
+                {/* Subtle pattern */}
+                <div className="absolute inset-0 opacity-5">
+                  <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle, #0ea5e9 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Class</p>
-                  <p className="font-semibold">{savedStudent.class}</p>
+
+                <div className="flex items-center gap-2.5 pb-2.5 border-b border-sky-200">
+                  <div className="h-10 w-10 bg-gradient-to-br from-sky-500 to-indigo-600 rounded-md flex items-center justify-center shadow-sm flex-shrink-0">
+                    <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[8px] text-slate-500 font-bold uppercase tracking-wide mb-0.5">Student ID</p>
+                    <p className="text-lg font-bold text-indigo-700 font-mono truncate">{savedStudent?.studentId}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Total Fee</p>
-                  <p className="font-semibold">{savedStudent.totalFee?.toLocaleString()} PKR</p>
+
+                {/* Student Info */}
+                <div className="space-y-1.5 mt-2.5">
+                  <div>
+                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">Full Name</p>
+                    <p className="text-base font-bold text-gray-900">{savedStudent?.studentName}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">Class</p>
+                      <p className="text-sm font-semibold text-gray-900">{savedStudent?.class}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">Group</p>
+                      <p className="text-sm font-semibold text-gray-900">{savedStudent?.group}</p>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Fee Status</p>
-                  <p className={`font-semibold capitalize ${savedStudent.feeStatus === 'paid' ? 'text-green-600' :
-                    savedStudent.feeStatus === 'partial' ? 'text-yellow-600' : 'text-amber-600'
+              </div>
+
+              {/* Ultra-Compact Info Grid */}
+              <div className="grid grid-cols-3 gap-1.5">
+                <div className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-200 rounded-md p-2 text-center">
+                  <DollarSign className="h-3.5 w-3.5 text-emerald-600 mx-auto mb-0.5" />
+                  <p className="text-[8px] text-emerald-700 font-bold uppercase">Fee</p>
+                  <p className="text-sm font-bold text-emerald-900">{savedStudent?.totalFee?.toLocaleString()}</p>
+                </div>
+
+                <div className={`bg-gradient-to-br ${savedStudent?.feeStatus === 'paid' ? 'from-green-50 to-emerald-50 border-green-200' :
+                  savedStudent?.feeStatus === 'partial' ? 'from-yellow-50 to-amber-50 border-yellow-200' :
+                    'from-orange-50 to-red-50 border-orange-200'
+                  } border rounded-md p-2 text-center`}>
+                  <Wallet className={`h-3.5 w-3.5 mx-auto mb-0.5 ${savedStudent?.feeStatus === 'paid' ? 'text-green-600' :
+                    savedStudent?.feeStatus === 'partial' ? 'text-yellow-600' :
+                      'text-orange-600'
+                    }`} />
+                  <p className={`text-[8px] font-bold uppercase ${savedStudent?.feeStatus === 'paid' ? 'text-green-700' :
+                    savedStudent?.feeStatus === 'partial' ? 'text-yellow-700' :
+                      'text-orange-700'
+                    }`}>Status</p>
+                  <p className={`text-sm font-bold capitalize ${savedStudent?.feeStatus === 'paid' ? 'text-green-900' :
+                    savedStudent?.feeStatus === 'partial' ? 'text-yellow-900' :
+                      'text-orange-900'
                     }`}>
-                    {savedStudent.feeStatus}
+                    {savedStudent?.feeStatus}
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-br from-blue-50 to-sky-50 border border-blue-200 rounded-md p-2 text-center">
+                  <svg className="h-3.5 w-3.5 text-blue-600 mx-auto mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <p className="text-[8px] text-blue-700 font-bold uppercase">Date</p>
+                  <p className="text-[10px] font-bold text-blue-900">
+                    {new Date(savedStudent.admissionDate).toLocaleDateString('en-PK', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric'
+                    })}
                   </p>
                 </div>
               </div>
             </div>
           )}
 
-          <DialogFooter className="flex gap-2 sm:justify-center">
-            <Button
-              variant="outline"
+          {/* Action Buttons */}
+          <div className="px-5 pb-4 space-y-2 relative z-50 pointer-events-auto">
+            <div className="flex gap-2">
+              {/* Students Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  console.log('✅ STUDENTS BUTTON CLICKED');
+                  setSuccessModalOpen(false);
+                  setTimeout(() => {
+                    navigate("/students");
+                  }, 200);
+                }}
+                className="flex-1 h-8 text-xs border border-slate-300 bg-white hover:bg-slate-50 active:bg-slate-100 rounded-md flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                <span>Students</span>
+              </button>
+
+              {/* Print Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  console.log('✅ PRINT BUTTON CLICKED');
+                  handlePrintSlip();
+                }}
+                className="flex-1 h-8 text-xs border border-sky-400 bg-white text-sky-600 hover:bg-sky-50 active:bg-sky-100 rounded-md flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                <span>Print</span>
+              </button>
+            </div>
+
+            {/* New Admission Button */}
+            <button
+              type="button"
               onClick={() => {
+                console.log('✅ NEW ADMISSION BUTTON CLICKED');
                 setSuccessModalOpen(false);
-                navigate("/students");
+                setTimeout(() => {
+                  handleCancel();
+                }, 200);
               }}
+              className="w-full h-10 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 active:from-sky-800 active:to-indigo-800 text-white shadow-lg rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-all font-semibold text-sm"
             >
-              <Eye className="mr-2 h-4 w-4" />
-              View Students
-            </Button>
-            <Button
-              onClick={() => {
-                setSuccessModalOpen(false);
-                handleCancel();
-              }}
-              className="bg-sky-600 hover:bg-sky-700"
-              style={{ borderRadius: "0.75rem" }}
-            >
-              <UserPlus className="mr-2 h-4 w-4" />
-              New Admission
-            </Button>
-          </DialogFooter>
+              <UserPlus className="h-4 w-4" />
+              <span>New Admission</span>
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+
+      {/* Hidden Print Slip Component */}
+      {
+        savedStudent && (
+          <AdmissionSlip student={savedStudent} session={savedSession} />
+        )
+      }
+    </DashboardLayout >
   );
 };
 

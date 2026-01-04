@@ -105,9 +105,9 @@ const studentSchema = new mongoose.Schema(
   }
 );
 
-// Virtual field for balance
+// Virtual field for balance - TASK 1: Use Math.max to prevent negative balance
 studentSchema.virtual('balance').get(function () {
-  return this.totalFee - this.paidAmount;
+  return Math.max(0, this.totalFee - this.paidAmount);
 });
 
 // Virtual for total subject fees (locked at admission time)
@@ -183,21 +183,24 @@ studentSchema.pre('save', async function () {
     this.paidAmount = Number(this.paidAmount);
   }
 
-  // Auto-calculate feeStatus
+  // TASK 3: Auto-calculate feeStatus based on payment logic
   const totalFee = Number(this.totalFee) || 0;
   const paidAmount = Number(this.paidAmount) || 0;
 
-  if (totalFee === 0 || paidAmount === 0) {
-    this.feeStatus = 'pending';
-  } else if (totalFee > 0 && paidAmount >= totalFee) {
+  // New Logic from Task 3:
+  // - If paidAmount >= totalFee → status = 'paid'
+  // - If paidAmount > 0 and < totalFee → status = 'partial'
+  // - If paidAmount === 0 → status = 'pending'
+
+  if (paidAmount >= totalFee && totalFee > 0) {
     this.feeStatus = 'paid';
-  } else if (totalFee > 0 && paidAmount > 0) {
+  } else if (paidAmount > 0 && paidAmount < totalFee) {
     this.feeStatus = 'partial';
   } else {
     this.feeStatus = 'pending';
   }
 
-  console.log(`✅ FINAL STATE: ID=${this.studentId}, FeeStatus=${this.feeStatus}, Subjects=${this.subjects?.length || 0}\n`);
+  console.log(`✅ FINAL STATE: ID=${this.studentId}, FeeStatus=${this.feeStatus}, TotalFee=${totalFee}, PaidAmount=${paidAmount}, Subjects=${this.subjects?.length || 0}\n`);
 });
 
 const Student = mongoose.model('Student', studentSchema);

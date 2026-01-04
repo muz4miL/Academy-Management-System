@@ -21,6 +21,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Tooltip as InfoTooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   DollarSign,
   TrendingUp,
   AlertCircle,
@@ -31,10 +37,14 @@ import {
   Plus,
   Trash2,
   TrendingDown,
+  HelpCircle,
+  Info,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { PaymentReceipt } from "@/components/finance/PaymentReceipt";
 
 // API Base URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
@@ -46,6 +56,12 @@ const Finance = () => {
   const [expenseTitle, setExpenseTitle] = useState("");
   const [expenseCategory, setExpenseCategory] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
+
+  // Payment receipt modal state
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [voucherData, setVoucherData] = useState<any>(null);
+  const [teacherFilter, setTeacherFilter] = useState<string>('all'); // Task 4: Teacher filter
+
 
   // Fetch real-time finance stats with error handling
   const { data: financeData, isLoading: statsLoading, isError: statsError } = useQuery({
@@ -115,6 +131,39 @@ const Finance = () => {
     },
   });
 
+  // Process teacher payment mutation
+  const processPaymentMutation = useMutation({
+    mutationFn: async ({ teacherId, amountPaid }: { teacherId: string; amountPaid: number }) => {
+      const response = await fetch(`${API_BASE_URL}/api/teachers/payout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teacherId,
+          amount: amountPaid,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to process payment');
+      }
+
+      return response.json();
+    },
+    onSuccess: (response) => {
+      console.log('✅ Payout successful:', response);
+      queryClient.invalidateQueries({ queryKey: ['finance'] });
+      queryClient.invalidateQueries({ queryKey: ['teachers'] });
+      setVoucherData(response.data);
+      setIsReceiptOpen(true);
+      toast.success('Payment processed successfully!');
+    },
+    onError: (error: any) => {
+      console.error('❌ Payout failed:', error);
+      toast.error(error.message || 'Failed to process payment');
+    },
+  });
+
   const handleAddExpense = () => {
     if (!expenseTitle || !expenseCategory || !expenseAmount) {
       toast.error('Please fill all expense fields');
@@ -126,6 +175,25 @@ const Finance = () => {
       category: expenseCategory,
       amount: parseFloat(expenseAmount),
     });
+  };
+
+  const handlePayTeacher = (teacher: any) => {
+    console.log('🔍 Teacher object received:', JSON.stringify(teacher, null, 2));
+
+    if (teacher.earnedAmount <= 0) {
+      toast.error('No payment due for this teacher');
+      return;
+    }
+
+    const payload = {
+      teacherId: teacher._id || teacher.teacherId || teacher.id,
+      amountPaid: teacher.earnedAmount,
+    };
+
+    console.log('💰 Payout Request Payload:', JSON.stringify(payload, null, 2));
+    console.log('📋 Payload Details - teacherId:', payload.teacherId, 'amount:', payload.amountPaid);
+
+    processPaymentMutation.mutate(payload);
   };
 
   // Loading state
@@ -184,322 +252,431 @@ const Finance = () => {
   const COLORS = ['#3b82f6', '#10b981', '#ef4444'];
 
   return (
-    <DashboardLayout title="Finance">
-      <HeaderBanner
-        title="Finance Management"
-        subtitle="Real-time financial analytics and expense tracking"
-      />
-
-      {/* KPI Cards */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KPICard
-          title="Total Collected"
-          value={`PKR ${(totalIncome / 1000).toFixed(0)}K`}
-          subtitle={`${collectionRate}% collection rate`}
-          icon={TrendingUp}
-          variant="success"
-          trend={{ value: collectionRate, isPositive: collectionRate > 70 }}
+    <TooltipProvider>
+      <DashboardLayout title="Finance">
+        <HeaderBanner
+          title="Finance Management"
+          subtitle="Real-time financial analytics and expense tracking"
         />
-        <KPICard
-          title="Teacher Liabilities"
-          value={`PKR ${(totalTeacherLiabilities / 1000).toFixed(0)}K`}
-          subtitle={`${teacherPayroll.length} active teachers`}
-          icon={GraduationCap}
-          variant="warning"
-        />
-        <KPICard
-          title="Total Expenses"
-          value={`PKR ${(totalExpenses / 1000).toFixed(0)}K`}
-          subtitle="Operational costs"
-          icon={TrendingDown}
-          variant="danger"
-        />
-        <KPICard
-          title="Net Profit"
-          value={`PKR ${(netProfit / 1000).toFixed(0)}K`}
-          subtitle="After all costs"
-          icon={Wallet}
-          variant={netProfit > 0 ? "primary" : "danger"}
-        />
-      </div>
 
-      {/* Charts & Revenue Breakdown */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        {/* TASK 4: Triple-Split Pie Chart */}
-        <div className="rounded-xl border border-border bg-card p-6 card-shadow">
-          <h3 className="mb-4 text-lg font-semibold text-foreground">
-            Financial Distribution
-          </h3>
-          {hasChartData ? (
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value: number) => `PKR ${value.toLocaleString()}`} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex items-center justify-center h-[280px] text-muted-foreground">
-              No financial data available yet
-            </div>
-          )}
-        </div>
+        {/* KPI Cards with Tooltips */}
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KPICard
+            title="Total Collected"
+            value={`PKR ${(totalIncome / 1000).toFixed(0)}K`}
+            subtitle={`${collectionRate}% collection rate`}
+            icon={TrendingUp}
+            variant="success"
+            trend={{ value: collectionRate, isPositive: collectionRate > 70 }}
+          />
 
-        {/* Revenue Breakdown */}
-        <div className="rounded-xl border border-border bg-card p-6 card-shadow">
-          <h3 className="mb-4 text-lg font-semibold text-foreground">
-            Revenue Breakdown
-          </h3>
-
-          <div className="mb-6 text-center">
-            <p className="text-sm text-muted-foreground">Total Revenue Collected</p>
-            <p className="text-3xl font-bold text-foreground">
-              PKR {totalIncome.toLocaleString()}
-            </p>
+          <div className="relative">
+            <KPICard
+              title="Teacher Liabilities"
+              value={`PKR ${(totalTeacherLiabilities / 1000).toFixed(0)}K`}
+              subtitle={`${teacherPayroll.length} active teachers`}
+              icon={GraduationCap}
+              variant="warning"
+            />
+            <InfoTooltip>
+              <TooltipTrigger asChild>
+                <button className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+                  <HelpCircle className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p className="text-sm">Total amount owed to teachers based on collected fees from their students. This is calculated using their compensation model (70/30 split, fixed salary, or hybrid).</p>
+              </TooltipContent>
+            </InfoTooltip>
           </div>
 
-          <div className="space-y-3">
-            <div className="rounded-lg border border-success/20 bg-success-light p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <GraduationCap className="h-5 w-5 text-success" />
-                  <span className="text-sm font-medium text-success">Teacher Payouts</span>
-                </div>
-                <p className="text-lg font-bold text-success">
-                  PKR {totalTeacherLiabilities.toLocaleString()}
-                </p>
-              </div>
-            </div>
+          <KPICard
+            title="Total Expenses"
+            value={`PKR ${(totalExpenses / 1000).toFixed(0)}K`}
+            subtitle="Operational costs"
+            icon={TrendingDown}
+            variant="danger"
+          />
 
-            <div className="rounded-lg border border-destructive/20 bg-red-50 p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <TrendingDown className="h-5 w-5 text-destructive" />
-                  <span className="text-sm font-medium text-destructive">Expenses</span>
-                </div>
-                <p className="text-lg font-bold text-destructive">
-                  PKR {totalExpenses.toLocaleString()}
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-primary/20 bg-primary-light p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Wallet className="h-5 w-5 text-primary" />
-                  <span className="text-sm font-medium text-primary">Net Profit</span>
-                </div>
-                <p className="text-lg font-bold text-primary">
-                  PKR {netProfit.toLocaleString()}
-                </p>
-              </div>
-            </div>
+          <div className="relative">
+            <KPICard
+              title="Net Profit"
+              value={`PKR ${(netProfit / 1000).toFixed(0)}K`}
+              subtitle="After all costs"
+              icon={Wallet}
+              variant={netProfit > 0 ? "primary" : "danger"}
+            />
+            <InfoTooltip>
+              <TooltipTrigger asChild>
+                <button className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+                  <HelpCircle className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p className="text-sm">Net Profit = Total Collected - (Teacher Payouts + Operational Expenses). This is the academy's final profit after all costs.</p>
+              </TooltipContent>
+            </InfoTooltip>
           </div>
         </div>
-      </div>
 
-      {/* Teacher Payroll Table */}
-      <div className="mt-6 rounded-xl border border-border bg-card card-shadow overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border p-4">
-          <div>
-            <h3 className="text-lg font-semibold text-foreground">Teacher Payroll</h3>
-            <p className="text-sm text-muted-foreground">Earnings based on collected fees</p>
+        {/* Warning for Negative Profit */}
+        {netProfit < 0 && (
+          <div className="mt-4 rounded-lg border-2 border-red-500 bg-red-50 p-4 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+            <div>
+              <h4 className="font-semibold text-red-900">⚠️ Warning: Monthly Loss Detected</h4>
+              <p className="text-sm text-red-700 mt-1">
+                Your monthly expenses and teacher payouts (PKR {(totalTeacherLiabilities + totalExpenses).toLocaleString()}) exceed the collected revenue (PKR {totalIncome.toLocaleString()}).
+                Consider reviewing operational costs or improving fee collection.
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">{teacherPayroll.length} Teachers</span>
-          </div>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-secondary hover:bg-secondary">
-              <TableHead className="font-semibold">Teacher Name</TableHead>
-              <TableHead className="font-semibold">Subject</TableHead>
-              <TableHead className="font-semibold">Model</TableHead>
-              <TableHead className="font-semibold text-right">Revenue</TableHead>
-              <TableHead className="font-semibold text-right">Earned</TableHead>
-              <TableHead className="font-semibold text-center">Classes</TableHead>
-              <TableHead className="font-semibold text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {teacherPayroll.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                  No active teachers found
-                </TableCell>
-              </TableRow>
+        )}
+
+        {/* Charts & Revenue Breakdown */}
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          {/* TASK 4: Triple-Split Pie Chart */}
+          <div className="rounded-xl border border-border bg-card p-6 card-shadow">
+            <h3 className="mb-4 text-lg font-semibold text-foreground">
+              Financial Distribution
+            </h3>
+            {hasChartData ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: number) => `PKR ${value.toLocaleString()}`} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
             ) : (
-              teacherPayroll.map((teacher: any) => (
-                <TableRow key={teacher.teacherId} className="hover:bg-secondary/50">
-                  <TableCell className="font-medium">{teacher.name}</TableCell>
-                  <TableCell className="capitalize">{teacher.subject}</TableCell>
-                  <TableCell>
-                    <span className="px-2 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-medium capitalize">
-                      {teacher.compensationType}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    PKR {teacher.revenue.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span className="font-semibold text-green-600">
-                      PKR {teacher.earnedAmount.toLocaleString()}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
-                      {teacher.classesCount}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      className="bg-green-600 hover:bg-green-700"
-                      onClick={() => toast.success(`Payment voucher generated for ${teacher.name}`)}
-                    >
-                      <Wallet className="mr-2 h-3 w-3" />
-                      Pay Now
-                    </Button>
+              <div className="flex items-center justify-center h-[280px] text-muted-foreground">
+                No financial data available yet
+              </div>
+            )}
+          </div>
+
+          {/* Revenue Breakdown */}
+          <div className="rounded-xl border border-border bg-card p-6 card-shadow">
+            <h3 className="mb-4 text-lg font-semibold text-foreground">
+              Revenue Breakdown
+            </h3>
+
+            <div className="mb-6 text-center">
+              <p className="text-sm text-muted-foreground">Total Revenue Collected</p>
+              <p className="text-3xl font-bold text-foreground">
+                PKR {totalIncome.toLocaleString()}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-lg border border-success/20 bg-success-light p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <GraduationCap className="h-5 w-5 text-success" />
+                    <span className="text-sm font-medium text-success">Teacher Payouts</span>
+                  </div>
+                  <p className="text-lg font-bold text-success">
+                    PKR {totalTeacherLiabilities.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-destructive/20 bg-red-50 p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingDown className="h-5 w-5 text-destructive" />
+                    <span className="text-sm font-medium text-destructive">Expenses</span>
+                  </div>
+                  <p className="text-lg font-bold text-destructive">
+                    PKR {totalExpenses.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-primary/20 bg-primary-light p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="h-5 w-5 text-primary" />
+                    <span className="text-sm font-medium text-primary">Net Profit</span>
+                  </div>
+                  <p className="text-lg font-bold text-primary">
+                    PKR {netProfit.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Teacher Payroll Table */}
+        <div className="mt-6 rounded-xl border border-border bg-card card-shadow overflow-hidden">
+          <div className="flex items-center justify-between border-b border-border p-4">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Teacher Payroll</h3>
+              <p className="text-sm text-muted-foreground">Earnings based on collected fees</p>
+            </div>
+            <div className="flex items-center gap-4">
+              {/* Task 4: Teacher Filter */}
+              <Select value={teacherFilter} onValueChange={setTeacherFilter}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Filter by Teacher" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Teachers</SelectItem>
+                  {teacherPayroll.map((teacher: any) => (
+                    <SelectItem key={teacher.teacherId} value={teacher.teacherId}>
+                      {teacher.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground">
+                  {teacherFilter === 'all' ? teacherPayroll.length : teacherPayroll.filter((t: any) => t.teacherId === teacherFilter).length} Teachers
+                </span>
+              </div>
+            </div>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-secondary hover:bg-secondary">
+                <TableHead className="font-semibold">Teacher Name</TableHead>
+                <TableHead className="font-semibold">Subject</TableHead>
+                <TableHead className="font-semibold">Model</TableHead>
+                <TableHead className="font-semibold text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    Revenue
+                    <TooltipProvider>
+                      <InfoTooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="text-xs">The total fees collected from students enrolled in this teacher's classes.</p>
+                        </TooltipContent>
+                      </InfoTooltip>
+                    </TooltipProvider>
+                  </div>
+                </TableHead>
+                <TableHead className="font-semibold text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    Earned
+                    <TooltipProvider>
+                      <InfoTooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="text-xs">The teacher's share of the collected fees based on their compensation model (percentage, fixed, or hybrid).</p>
+                        </TooltipContent>
+                      </InfoTooltip>
+                    </TooltipProvider>
+                  </div>
+                </TableHead>
+                <TableHead className="font-semibold text-center">Classes</TableHead>
+                <TableHead className="font-semibold text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {teacherPayroll.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    No active teachers found
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* TASK 3: Daily Expenses Section */}
-      <div className="mt-6 rounded-xl border border-red-200 bg-red-50/50 p-6 card-shadow">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-              <TrendingDown className="h-5 w-5 text-red-600" />
-              Daily Expenses
-            </h3>
-            <p className="text-sm text-muted-foreground">Track operational costs</p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-muted-foreground">Total Expenses</p>
-            <p className="text-2xl font-bold text-red-600">PKR {totalExpenses.toLocaleString()}</p>
-          </div>
-        </div>
-
-        {/* Add Expense Form */}
-        <div className="grid gap-4 sm:grid-cols-4 mb-6 p-4 rounded-lg border border-red-200 bg-white">
-          <div className="space-y-2">
-            <Label htmlFor="expense-title">Expense Title</Label>
-            <Input
-              id="expense-title"
-              placeholder="e.g., Electricity Bill"
-              value={expenseTitle}
-              onChange={(e) => setExpenseTitle(e.target.value)}
-              className="bg-background"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="expense-category">Category</Label>
-            <Select value={expenseCategory} onValueChange={setExpenseCategory}>
-              <SelectTrigger className="bg-background">
-                <SelectValue placeholder="Select category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Utilities">Utilities</SelectItem>
-                <SelectItem value="Rent">Rent</SelectItem>
-                <SelectItem value="Salaries">Salaries</SelectItem>
-                <SelectItem value="Stationery">Stationery</SelectItem>
-                <SelectItem value="Marketing">Marketing</SelectItem>
-                <SelectItem value="Misc">Miscellaneous</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="expense-amount">Amount (PKR)</Label>
-            <Input
-              id="expense-amount"
-              type="number"
-              placeholder="0"
-              value={expenseAmount}
-              onChange={(e) => setExpenseAmount(e.target.value)}
-              className="bg-background"
-            />
-          </div>
-          <div className="flex items-end">
-            <Button
-              onClick={handleAddExpense}
-              disabled={createExpenseMutation.isPending}
-              className="w-full bg-red-600 hover:bg-red-700"
-            >
-              {createExpenseMutation.isPending ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding...</>
               ) : (
-                <><Plus className="mr-2 h-4 w-4" /> Add Expense</>
+                teacherPayroll
+                  .filter((teacher: any) => teacherFilter === 'all' || teacher.teacherId === teacherFilter)
+                  .map((teacher: any) => (
+                    <TableRow key={teacher.teacherId} className="hover:bg-secondary/50">
+                      <TableCell className="font-medium">{teacher.name}</TableCell>
+                      <TableCell className="capitalize">{teacher.subject}</TableCell>
+                      <TableCell>
+                        <span className="px-2 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-medium capitalize">
+                          {teacher.compensationType}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        PKR {teacher.revenue.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="font-semibold text-green-600">
+                          PKR {teacher.earnedAmount.toLocaleString()}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
+                          {teacher.classesCount}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {/* Task 3: Show PAID badge if earnedAmount is 0 */}
+                        {teacher.earnedAmount <= 0 ? (
+                          <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-white">
+                            ✓ PAID
+                          </Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => handlePayTeacher(teacher)}
+                            disabled={processPaymentMutation.isPending}
+                          >
+                            {processPaymentMutation.isPending ? (
+                              <><Loader2 className="mr-2 h-3 w-3 animate-spin" /> Processing...</>
+                            ) : (
+                              <><Wallet className="mr-2 h-3 w-3" /> Pay Now</>
+                            )}
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
               )}
-            </Button>
-          </div>
+            </TableBody>
+          </Table>
         </div>
 
-        {/* Recent Expenses List */}
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold text-foreground mb-3">Recent Expenses</h4>
-          {expensesLoading ? (
-            <div className="text-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+        {/* TASK 3: Daily Expenses Section */}
+        <div className="mt-6 rounded-xl border border-red-200 bg-red-50/50 p-6 card-shadow">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <TrendingDown className="h-5 w-5 text-red-600" />
+                Daily Expenses
+              </h3>
+              <p className="text-sm text-muted-foreground">Track operational costs</p>
             </div>
-          ) : expenses.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No expenses recorded yet
+            <div className="text-right">
+              <p className="text-sm text-muted-foreground">Total Expenses</p>
+              <p className="text-2xl font-bold text-red-600">PKR {totalExpenses.toLocaleString()}</p>
             </div>
-          ) : (
-            expenses.map((expense: any) => (
-              <div
-                key={expense._id}
-                className="flex items-center justify-between p-3 rounded-lg border border-red-200 bg-white hover:bg-red-50/50 transition-colors"
+          </div>
+
+          {/* Add Expense Form */}
+          <div className="grid gap-4 sm:grid-cols-4 mb-6 p-4 rounded-lg border border-red-200 bg-white">
+            <div className="space-y-2">
+              <Label htmlFor="expense-title">Expense Title</Label>
+              <Input
+                id="expense-title"
+                placeholder="e.g., Electricity Bill"
+                value={expenseTitle}
+                onChange={(e) => setExpenseTitle(e.target.value)}
+                className="bg-background"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="expense-category">Category</Label>
+              <Select value={expenseCategory} onValueChange={setExpenseCategory}>
+                <SelectTrigger className="bg-background">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Utilities">Utilities</SelectItem>
+                  <SelectItem value="Rent">Rent</SelectItem>
+                  <SelectItem value="Salaries">Salaries</SelectItem>
+                  <SelectItem value="Stationery">Stationery</SelectItem>
+                  <SelectItem value="Marketing">Marketing</SelectItem>
+                  <SelectItem value="Misc">Miscellaneous</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="expense-amount">Amount (PKR)</Label>
+              <Input
+                id="expense-amount"
+                type="number"
+                placeholder="0"
+                value={expenseAmount}
+                onChange={(e) => setExpenseAmount(e.target.value)}
+                className="bg-background"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button
+                onClick={handleAddExpense}
+                disabled={createExpenseMutation.isPending}
+                className="w-full bg-red-600 hover:bg-red-700"
               >
-                <div className="flex-1">
-                  <p className="font-medium text-foreground">{expense.title}</p>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
-                      {expense.category}
+                {createExpenseMutation.isPending ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding...</>
+                ) : (
+                  <><Plus className="mr-2 h-4 w-4" /> Add Expense</>
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* Recent Expenses List */}
+          <div className="space-y-2">
+            <h4 className="text-sm font-semibold text-foreground mb-3">Recent Expenses</h4>
+            {expensesLoading ? (
+              <div className="text-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+              </div>
+            ) : expenses.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No expenses recorded yet
+              </div>
+            ) : (
+              expenses.map((expense: any) => (
+                <div
+                  key={expense._id}
+                  className="flex items-center justify-between p-3 rounded-lg border border-red-200 bg-white hover:bg-red-50/50 transition-colors"
+                >
+                  <div className="flex-1">
+                    <p className="font-medium text-foreground">{expense.title}</p>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
+                        {expense.category}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(expense.date).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg font-bold text-red-600">
+                      PKR {expense.amount.toLocaleString()}
                     </span>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(expense.date).toLocaleDateString()}
-                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-100"
+                      onClick={() => deleteExpenseMutation.mutate(expense._id)}
+                      disabled={deleteExpenseMutation.isPending}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-lg font-bold text-red-600">
-                    PKR {expense.amount.toLocaleString()}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-100"
-                    onClick={() => deleteExpenseMutation.mutate(expense._id)}
-                    disabled={deleteExpenseMutation.isPending}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
-      </div>
-    </DashboardLayout>
+
+        {/* Payment Receipt Modal */}
+        <PaymentReceipt
+          isOpen={isReceiptOpen}
+          onClose={() => setIsReceiptOpen(false)}
+          voucherData={voucherData}
+        />
+      </DashboardLayout>
+    </TooltipProvider>
   );
 };
 
