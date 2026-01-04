@@ -45,6 +45,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recha
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { PaymentReceipt } from "@/components/finance/PaymentReceipt";
+import { TeacherPayrollTable } from "@/components/finance/TeacherPayrollTable";
+import { ExpenseTracker } from "@/components/finance/ExpenseTracker";
 
 // API Base URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
@@ -422,252 +424,28 @@ const Finance = () => {
         </div>
 
         {/* Teacher Payroll Table */}
-        <div className="mt-6 rounded-xl border border-border bg-card card-shadow overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border p-4">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">Teacher Payroll</h3>
-              <p className="text-sm text-muted-foreground">Earnings based on collected fees</p>
-            </div>
-            <div className="flex items-center gap-4">
-              {/* Task 4: Teacher Filter */}
-              <Select value={teacherFilter} onValueChange={setTeacherFilter}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Filter by Teacher" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Teachers</SelectItem>
-                  {teacherPayroll.map((teacher: any) => (
-                    <SelectItem key={teacher.teacherId} value={teacher.teacherId}>
-                      {teacher.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium text-foreground">
-                  {teacherFilter === 'all' ? teacherPayroll.length : teacherPayroll.filter((t: any) => t.teacherId === teacherFilter).length} Teachers
-                </span>
-              </div>
-            </div>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-secondary hover:bg-secondary">
-                <TableHead className="font-semibold">Teacher Name</TableHead>
-                <TableHead className="font-semibold">Subject</TableHead>
-                <TableHead className="font-semibold">Model</TableHead>
-                <TableHead className="font-semibold text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    Revenue
-                    <TooltipProvider>
-                      <InfoTooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p className="text-xs">The total fees collected from students enrolled in this teacher's classes.</p>
-                        </TooltipContent>
-                      </InfoTooltip>
-                    </TooltipProvider>
-                  </div>
-                </TableHead>
-                <TableHead className="font-semibold text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    Earned
-                    <TooltipProvider>
-                      <InfoTooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p className="text-xs">The teacher's share of the collected fees based on their compensation model (percentage, fixed, or hybrid).</p>
-                        </TooltipContent>
-                      </InfoTooltip>
-                    </TooltipProvider>
-                  </div>
-                </TableHead>
-                <TableHead className="font-semibold text-center">Classes</TableHead>
-                <TableHead className="font-semibold text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {teacherPayroll.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    No active teachers found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                teacherPayroll
-                  .filter((teacher: any) => teacherFilter === 'all' || teacher.teacherId === teacherFilter)
-                  .map((teacher: any) => (
-                    <TableRow key={teacher.teacherId} className="hover:bg-secondary/50">
-                      <TableCell className="font-medium">{teacher.name}</TableCell>
-                      <TableCell className="capitalize">{teacher.subject}</TableCell>
-                      <TableCell>
-                        <span className="px-2 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-medium capitalize">
-                          {teacher.compensationType}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        PKR {teacher.revenue.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className="font-semibold text-green-600">
-                          PKR {teacher.earnedAmount.toLocaleString()}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
-                          {teacher.classesCount}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {/* Task 3: Show PAID badge if earnedAmount is 0 */}
-                        {teacher.earnedAmount <= 0 ? (
-                          <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-white">
-                            ✓ PAID
-                          </Badge>
-                        ) : (
-                          <Button
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700"
-                            onClick={() => handlePayTeacher(teacher)}
-                            disabled={processPaymentMutation.isPending}
-                          >
-                            {processPaymentMutation.isPending ? (
-                              <><Loader2 className="mr-2 h-3 w-3 animate-spin" /> Processing...</>
-                            ) : (
-                              <><Wallet className="mr-2 h-3 w-3" /> Pay Now</>
-                            )}
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+        <TeacherPayrollTable
+          teachers={teacherPayroll}
+          filter={teacherFilter}
+          onFilterChange={setTeacherFilter}
+          onPay={handlePayTeacher}
+          isPaying={processPaymentMutation.isPending}
+        />
+
+
+
+
+
+
+
+
 
         {/* TASK 3: Daily Expenses Section */}
-        <div className="mt-6 rounded-xl border border-red-200 bg-red-50/50 p-6 card-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <TrendingDown className="h-5 w-5 text-red-600" />
-                Daily Expenses
-              </h3>
-              <p className="text-sm text-muted-foreground">Track operational costs</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm text-muted-foreground">Total Expenses</p>
-              <p className="text-2xl font-bold text-red-600">PKR {totalExpenses.toLocaleString()}</p>
-            </div>
-          </div>
-
-          {/* Add Expense Form */}
-          <div className="grid gap-4 sm:grid-cols-4 mb-6 p-4 rounded-lg border border-red-200 bg-white">
-            <div className="space-y-2">
-              <Label htmlFor="expense-title">Expense Title</Label>
-              <Input
-                id="expense-title"
-                placeholder="e.g., Electricity Bill"
-                value={expenseTitle}
-                onChange={(e) => setExpenseTitle(e.target.value)}
-                className="bg-background"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="expense-category">Category</Label>
-              <Select value={expenseCategory} onValueChange={setExpenseCategory}>
-                <SelectTrigger className="bg-background">
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Utilities">Utilities</SelectItem>
-                  <SelectItem value="Rent">Rent</SelectItem>
-                  <SelectItem value="Salaries">Salaries</SelectItem>
-                  <SelectItem value="Stationery">Stationery</SelectItem>
-                  <SelectItem value="Marketing">Marketing</SelectItem>
-                  <SelectItem value="Misc">Miscellaneous</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="expense-amount">Amount (PKR)</Label>
-              <Input
-                id="expense-amount"
-                type="number"
-                placeholder="0"
-                value={expenseAmount}
-                onChange={(e) => setExpenseAmount(e.target.value)}
-                className="bg-background"
-              />
-            </div>
-            <div className="flex items-end">
-              <Button
-                onClick={handleAddExpense}
-                disabled={createExpenseMutation.isPending}
-                className="w-full bg-red-600 hover:bg-red-700"
-              >
-                {createExpenseMutation.isPending ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding...</>
-                ) : (
-                  <><Plus className="mr-2 h-4 w-4" /> Add Expense</>
-                )}
-              </Button>
-            </div>
-          </div>
-
-          {/* Recent Expenses List */}
-          <div className="space-y-2">
-            <h4 className="text-sm font-semibold text-foreground mb-3">Recent Expenses</h4>
-            {expensesLoading ? (
-              <div className="text-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-              </div>
-            ) : expenses.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No expenses recorded yet
-              </div>
-            ) : (
-              expenses.map((expense: any) => (
-                <div
-                  key={expense._id}
-                  className="flex items-center justify-between p-3 rounded-lg border border-red-200 bg-white hover:bg-red-50/50 transition-colors"
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">{expense.title}</p>
-                    <div className="flex items-center gap-3 mt-1">
-                      <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
-                        {expense.category}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(expense.date).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-red-600">
-                      PKR {expense.amount.toLocaleString()}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-100"
-                      onClick={() => deleteExpenseMutation.mutate(expense._id)}
-                      disabled={deleteExpenseMutation.isPending}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        <ExpenseTracker
+          expenses={expenses}
+          totalExpenses={totalExpenses}
+          isLoading={expensesLoading}
+        />
 
         {/* Payment Receipt Modal */}
         <PaymentReceipt
@@ -675,8 +453,8 @@ const Finance = () => {
           onClose={() => setIsReceiptOpen(false)}
           voucherData={voucherData}
         />
-      </DashboardLayout>
-    </TooltipProvider>
+      </DashboardLayout >
+    </TooltipProvider >
   );
 };
 

@@ -223,6 +223,24 @@ router.get('/stats/overview', async (req, res) => {
                 earnedAmount = baseSalary + (teacherRevenue * (profitShare / 100));
             }
 
+            // Check if teacher already paid for current month
+            const TeacherPayment = require('../models/TeacherPayment');
+            const now = new Date();
+            const currentMonth = now.toLocaleString('en-US', { month: 'long' });
+            const currentYear = now.getFullYear();
+
+            const alreadyPaid = await TeacherPayment.findOne({
+                teacherId: teacher._id,
+                month: currentMonth,
+                year: currentYear,
+                status: 'paid'
+            });
+
+            // Subtract already paid amount from earned amount
+            if (alreadyPaid) {
+                earnedAmount = Math.max(0, earnedAmount - alreadyPaid.amountPaid);
+            }
+
             totalTeacherLiabilities += earnedAmount;
 
             teacherPayroll.push({
@@ -238,6 +256,7 @@ router.get('/stats/overview', async (req, res) => {
 
         // TASK 2 & 3: Net Balance Calculation with Real Expenses
         const Expense = require('../models/Expense');
+        const TeacherPayment = require('../models/TeacherPayment');
 
         // Get total expenses
         const expensesResult = await Expense.aggregate([
@@ -245,10 +264,27 @@ router.get('/stats/overview', async (req, res) => {
         ]);
         const totalExpenses = expensesResult[0]?.totalExpenses || 0;
 
-        // Net Profit Formula: Income - (Teacher Liabilities + Expenses)
-        const netProfit = totalIncome - totalTeacherLiabilities - totalExpenses;
+        // Get total teacher payouts (money already paid out)
+        const now = new Date();
+        const currentMonth = now.toLocaleString('en-US', { month: 'long' });
+        const currentYear = now.getFullYear();
 
-        // Academy's share (what's left after teacher payouts and expenses)
+        const teacherPayoutsResult = await TeacherPayment.aggregate([
+            {
+                $match: {
+                    status: 'paid',
+                    month: currentMonth,
+                    year: currentYear
+                }
+            },
+            { $group: { _id: null, totalPaid: { $sum: '$amountPaid' } } }
+        ]);
+        const totalTeacherPayouts = teacherPayoutsResult[0]?.totalPaid || 0;
+
+        // Net Profit Formula: Income - (Teacher Pending Liabilities + Already Paid Payouts + Expenses)
+        const netProfit = totalIncome - totalTeacherLiabilities - totalTeacherPayouts - totalExpenses;
+
+        // Academy's share (what's left after all costs)
         const academyShare = netProfit;
 
         res.json({
@@ -261,7 +297,8 @@ router.get('/stats/overview', async (req, res) => {
                 pendingStudentsCount,
 
                 // Teacher Metrics
-                totalTeacherLiabilities,
+                totalTeacherLiabilities,      // What we OWE (pending)
+                totalTeacherPayouts,          // What we've PAID (current month)
                 teacherPayroll,
                 teacherCount: teachers.length,
 

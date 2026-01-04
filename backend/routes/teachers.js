@@ -29,6 +29,45 @@ router.put('/:id', updateTeacher);
 // @desc    Delete teacher
 router.delete('/:id', deleteTeacher);
 
+// @route   GET /api/teachers/payments/history
+// @desc    Get all teacher payment transactions
+// @access  Public
+router.get('/payments/history', async (req, res) => {
+    try {
+        const { teacherId, month, year, limit = 50 } = req.query;
+
+        const query = {};
+        if (teacherId) query.teacherId = teacherId;
+        if (month) query.month = month;
+        if (year) query.year = parseInt(year);
+
+        const payments = await TeacherPayment.find(query)
+            .sort({ paymentDate: -1 })
+            .limit(parseInt(limit))
+            .populate('teacherId', 'name subject');
+
+        // Calculate total paid amount
+        const totalPaid = payments.reduce((sum, payment) => sum + payment.amountPaid, 0);
+
+        res.json({
+            success: true,
+            data: {
+                payments,
+                totalPaid,
+                count: payments.length
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching payment history:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch payment history',
+            error: error.message
+        });
+    }
+});
+
+
 // ==================== UNIFIED PAYOUT ENDPOINT ====================
 // @route   POST /api/teachers/payout
 // @desc    Process teacher payout from Finance dashboard
