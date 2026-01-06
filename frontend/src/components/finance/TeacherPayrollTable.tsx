@@ -26,13 +26,7 @@ import {
     Loader2,
     Wallet,
     Info,
-    CheckCircle2,
-    TrendingUp,
-    GraduationCap,
-    DollarSign,
-    Award,
-    BookOpen,
-    HelpCircle
+    CheckCircle2
 } from "lucide-react";
 
 interface Teacher {
@@ -69,205 +63,167 @@ export const TeacherPayrollTable = ({
         (sum, t) => sum + (t.earnedAmount > 0 ? t.earnedAmount : 0),
         0
     );
-    const totalPaid = filteredTeachers.filter(t => t.earnedAmount === 0).length;
+    const paidCount = filteredTeachers.filter(t => t.earnedAmount === 0).length;
 
     return (
-        <div className="mt-6 rounded-xl border-2 border-green-200 bg-gradient-to-br from-green-50/50 to-emerald-50/30 overflow-hidden card-shadow">
+        <div className="mt-6 rounded-xl border border-border/50 bg-card overflow-hidden card-shadow">
             {/* Header Section */}
-            <div className="flex items-center justify-between border-b-2 border-green-200 bg-white p-5">
-                <div className="flex-1">
-                    <h3 className="text-xl font-bold text-foreground flex items-center gap-2 mb-1">
-                        <GraduationCap className="h-6 w-6 text-green-600" />
+            <div className="flex items-center justify-between border-b bg-muted/30 px-6 py-4">
+                <div>
+                    <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
+                        <Wallet className="h-4 w-4 text-primary" />
                         Teacher Payroll
-                        <TooltipProvider>
-                            <Tooltip>
-                                <TooltipTrigger>
-                                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
-                                    <p className="text-xs">Teacher earnings are calculated based on student fees collected from their classes</p>
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
                     </h3>
-                    <p className="text-sm text-muted-foreground">Earnings based on collected fees</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Earnings based on collected fees</p>
                 </div>
 
-                {/* Summary Stats */}
-                <div className="flex items-center gap-4">
-                    <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg px-4 py-2">
-                        <p className="text-xs text-muted-foreground mb-0.5">Pending Payments</p>
-                        <p className="text-lg font-bold text-yellow-600">PKR {totalPending.toLocaleString()}</p>
+                {/* Summary Stats - Refined */}
+                <div className="flex items-center gap-6">
+                    <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Pending Payments</p>
+                        <p className="text-base font-semibold text-primary">PKR {totalPending.toLocaleString()}</p>
                     </div>
-                    <div className="bg-green-50 border-2 border-green-200 rounded-lg px-4 py-2">
-                        <p className="text-xs text-muted-foreground mb-0.5">Paid This Month</p>
-                        <p className="text-lg font-bold text-green-600">{totalPaid} {totalPaid === 1 ? 'Teacher' : 'Teachers'}</p>
+                    <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Paid This Month</p>
+                        <p className="text-base font-semibold text-green-600">{paidCount} Teachers</p>
                     </div>
 
-                    {/* Filter Dropdown */}
-                    <div className="flex items-center gap-3 pl-3 border-l-2 border-gray-200">
+                    {/* Filter Dropdown - Refined */}
+                    <div className="flex items-center gap-3 pl-6 border-l">
                         <Select value={filter} onValueChange={onFilterChange}>
-                            <SelectTrigger className="w-[200px] h-10 border-2 font-medium">
-                                <SelectValue placeholder="Filter by Teacher" />
+                            <SelectTrigger className="w-[180px] h-9 text-sm">
+                                <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">
-                                    <span className="font-semibold">All Teachers</span>
-                                </SelectItem>
+                                <SelectItem value="all">All Teachers</SelectItem>
                                 {teachers.map((teacher) => (
                                     <SelectItem key={teacher.teacherId} value={teacher.teacherId}>
-                                        {teacher.name} - {teacher.subject}
+                                        {teacher.name}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
-                        <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border-2 border-gray-200">
-                            <Users className="h-4 w-4 text-green-600" />
-                            <span className="text-sm font-bold text-foreground">
-                                {filteredTeachers.length} {filteredTeachers.length === 1 ? 'Teacher' : 'Teachers'}
-                            </span>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Users className="h-3.5 w-3.5" />
+                            <span className="font-medium">{filteredTeachers.length} Teachers</span>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Table */}
-            <div className="bg-white">
-                <Table>
-                    <TableHeader>
-                        <TableRow className="bg-green-50 hover:bg-green-50 border-b-2 border-green-200">
-                            <TableHead className="font-bold text-foreground">
-                                <div className="flex items-center gap-2">
-                                    <GraduationCap className="h-4 w-4 text-green-600" />
-                                    Teacher Name
-                                </div>
-                            </TableHead>
-                            <TableHead className="font-bold text-foreground">
-                                <div className="flex items-center gap-2">
-                                    <BookOpen className="h-4 w-4 text-green-600" />
-                                    Subject
-                                </div>
-                            </TableHead>
-                            <TableHead className="font-bold text-foreground">
-                                <div className="flex items-center gap-2">
-                                    <Award className="h-4 w-4 text-green-600" />
-                                    Model
-                                </div>
-                            </TableHead>
-                            <TableHead className="font-bold text-foreground text-right">
-                                <div className="flex items-center justify-end gap-1">
-                                    <TrendingUp className="h-4 w-4 text-green-600" />
-                                    Revenue
-                                    <TooltipProvider>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                                            </TooltipTrigger>
-                                            <TooltipContent className="max-w-xs">
-                                                <p className="text-xs">Total fees collected from students in this teacher's classes</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    </TooltipProvider>
-                                </div>
-                            </TableHead>
-                            <TableHead className="font-bold text-foreground text-right">
-                                <div className="flex items-center justify-end gap-1">
-                                    <DollarSign className="h-4 w-4 text-green-600" />
-                                    Earned
-                                    <TooltipProvider>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                                            </TooltipTrigger>
-                                            <TooltipContent className="max-w-xs">
-                                                <p className="text-xs">Teacher's share based on their compensation model (after deducting already paid amounts)</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    </TooltipProvider>
-                                </div>
-                            </TableHead>
-                            <TableHead className="font-bold text-foreground text-center">Classes</TableHead>
-                            <TableHead className="font-bold text-foreground text-right">Actions</TableHead>
+            {/* Table - Elegant & Clean */}
+            <Table>
+                <TableHeader>
+                    <TableRow className="bg-muted/20 hover:bg-muted/20 border-b">
+                        <TableHead className="font-semibold text-foreground text-sm">Teacher Name</TableHead>
+                        <TableHead className="font-semibold text-foreground text-sm">Subject</TableHead>
+                        <TableHead className="font-semibold text-foreground text-sm">Model</TableHead>
+                        <TableHead className="font-semibold text-foreground text-sm text-right">
+                            <div className="flex items-center justify-end gap-1">
+                                Revenue
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-xs text-xs">
+                                            Total fees collected from students
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </div>
+                        </TableHead>
+                        <TableHead className="font-semibold text-foreground text-sm text-right">
+                            <div className="flex items-center justify-end gap-1">
+                                Earned
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-xs text-xs">
+                                            Teacher's share after deductions
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </div>
+                        </TableHead>
+                        <TableHead className="font-semibold text-foreground text-sm text-center">Classes</TableHead>
+                        <TableHead className="font-semibold text-foreground text-sm text-right">Actions</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {filteredTeachers.length === 0 ? (
+                        <TableRow>
+                            <TableCell colSpan={7} className="text-center text-muted-foreground py-12 text-sm">
+                                No teachers found
+                            </TableCell>
                         </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {filteredTeachers.length === 0 ? (
-                            <TableRow>
-                                <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
-                                    <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                                    <p className="font-semibold">No teachers found</p>
-                                    <p className="text-sm">Try adjusting your filter</p>
+                    ) : (
+                        filteredTeachers.map((teacher) => (
+                            <TableRow
+                                key={teacher.teacherId}
+                                className="hover:bg-muted/5 transition-colors border-b border-border/50"
+                            >
+                                <TableCell className="font-medium text-sm">
+                                    {teacher.name}
+                                </TableCell>
+                                <TableCell className="text-sm">
+                                    <span className="text-primary capitalize font-medium">
+                                        {teacher.subject}
+                                    </span>
+                                </TableCell>
+                                <TableCell className="text-sm">
+                                    <span className="px-2 py-0.5 rounded bg-muted text-muted-foreground text-xs capitalize font-medium">
+                                        {teacher.compensationType}
+                                    </span>
+                                </TableCell>
+                                <TableCell className="text-right text-sm text-muted-foreground font-medium">
+                                    PKR {teacher.revenue.toLocaleString()}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    <span className={`text-sm font-semibold ${teacher.earnedAmount > 0 ? 'text-primary' : 'text-green-600'
+                                        }`}>
+                                        PKR {teacher.earnedAmount.toLocaleString()}
+                                    </span>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                    <span className="text-sm font-medium text-muted-foreground">
+                                        {teacher.classesCount}
+                                    </span>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    {teacher.earnedAmount <= 0 ? (
+                                        <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700 hover:bg-green-50 font-medium text-xs">
+                                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                                            PAID
+                                        </Badge>
+                                    ) : (
+                                        <Button
+                                            size="sm"
+                                            className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium h-8 px-3 text-xs"
+                                            onClick={() => onPay(teacher)}
+                                            disabled={isPaying}
+                                        >
+                                            {isPaying ? (
+                                                <>
+                                                    <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                                                    Processing...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Wallet className="mr-1.5 h-3 w-3" />
+                                                    Pay Now
+                                                </>
+                                            )}
+                                        </Button>
+                                    )}
                                 </TableCell>
                             </TableRow>
-                        ) : (
-                            filteredTeachers.map((teacher) => (
-                                <TableRow
-                                    key={teacher.teacherId}
-                                    className={`hover:bg-green-50/50 transition-colors ${teacher.earnedAmount > 0 ? 'border-l-4 border-l-yellow-400' : 'border-l-4 border-l-green-400'
-                                        }`}
-                                >
-                                    <TableCell className="font-semibold text-base">
-                                        {teacher.name}
-                                    </TableCell>
-                                    <TableCell>
-                                        <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-sm font-medium capitalize">
-                                            {teacher.subject}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell>
-                                        <span className="px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-sm font-medium capitalize">
-                                            {teacher.compensationType}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <span className="text-base font-semibold text-muted-foreground">
-                                            PKR {teacher.revenue.toLocaleString()}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <span className={`text-lg font-bold ${teacher.earnedAmount > 0 ? 'text-yellow-600' : 'text-green-600'
-                                            }`}>
-                                            PKR {teacher.earnedAmount.toLocaleString()}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        <span className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-sm font-bold">
-                                            {teacher.classesCount}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        {teacher.earnedAmount <= 0 ? (
-                                            <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 text-sm">
-                                                <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                                                ✓ PAID
-                                            </Badge>
-                                        ) : (
-                                            <Button
-                                                size="sm"
-                                                className="bg-green-600 hover:bg-green-700 font-semibold px-4 h-9"
-                                                onClick={() => onPay(teacher)}
-                                                disabled={isPaying}
-                                            >
-                                                {isPaying ? (
-                                                    <>
-                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                        Processing...
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Wallet className="mr-2 h-4 w-4" />
-                                                        Pay Now
-                                                    </>
-                                                )}
-                                            </Button>
-                                        )}
-                                    </TableCell>
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
+                        ))
+                    )}
+                </TableBody>
+            </Table>
         </div>
     );
 };
